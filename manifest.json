@@ -5,6 +5,6 @@
   "description": "Blockbench exporter for CEM-S 1.21.6 GLSL models.",
   "version": "0.1.0",
   "min_version": "4.12.0",
-  "main": "plugin.js",
+  "main": "cem_s_studio.js",
   "variant": "desktop"
 }

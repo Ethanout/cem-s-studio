@@ -16,7 +16,7 @@ The exporter asks for a numeric model ID. Use the same ID in the matching CEM-S 
 1. Clone or download this repository.
 2. Run `npm run build`.
 3. In desktop Blockbench, choose **File â†?Plugins â†?Load Plugin from File**.
-4. Select the generated `plugin.js`.
+4. Select the generated `cem_s_studio.js` (the filename must match the plugin ID).
 5. Model with ordinary Blockbench cubes, then choose **File â†?Export â†?Export CEM-S 1.21.6 Model**.
 
 ## Deliberately not in 0.1
