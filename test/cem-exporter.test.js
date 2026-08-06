@@ -37,9 +37,10 @@ test('converts a Blockbench cube to the exporter model', () => {
   assert.deepEqual(model, {name: 'pig_ears', parts: [{name: 'ear', type: 'cube', origin: [0, 1.5, 3], size: [2, 1.5, 2], pivot: [0, -1, -2], rotation: [0, 15, 0], faces: [[4, 5, 6, 8], undefined, undefined, undefined, undefined, undefined]}]});
 });
 
-test('rejects cubes inside rotated Blockbench groups', () => {
+test('supports cubes inside rotated Blockbench groups', () => {
   const group = {name: 'head', rotation: [0, 30, 0], parent: null};
-  assert.throws(() => toCemModel('pig', [{from: [0, 0, 0], to: [1, 1, 1], parent: group}]), /rotated group "head"/);
+  const model = toCemModel('pig', [{from: [0, 0, 0], to: [1, 1, 1], parent: group}]);
+  assert.equal(model.parts[0].rotationMatrix.length, 9);
 });
 
 test('rejects unsupported rotated or disabled Blockbench faces', () => {
@@ -49,6 +50,21 @@ test('rejects unsupported rotated or disabled Blockbench faces', () => {
   assert.throws(() => toCemModel('pig', [cube]), /disabled face "down"/);
 });
 
-test('rejects multi-axis cube rotation until its Euler order is verified', () => {
-  assert.throws(() => toCemModel('pig', [{from: [0, 0, 0], to: [1, 1, 1], rotation: [10, 20, 0]}]), /multi-axis rotation/);
+test('converts multi-axis cube rotation to a rotation matrix', () => {
+  const model = toCemModel('pig', [{from: [0, 0, 0], to: [1, 1, 1], origin: [0, 0, 0], rotation: [10, 20, 30]}]);
+  assert.equal(model.parts[0].rotationMatrix.length, 9);
+  assert.deepEqual(model.parts[0].pivot, [0, 0, 0]);
+});
+
+test('bakes a rotated parent group into the cube transform', () => {
+  const group = {name: 'head', origin: [0, 0, 0], rotation: [0, 90, 0], parent: null};
+  const model = toCemModel('pig', [{from: [1, 0, 0], to: [3, 2, 2], parent: group}]);
+  assert.deepEqual(model.parts[0].origin, [2, 1, 1]);
+  assert.equal(model.parts[0].rotationMatrix.length, 9);
+  assert.match(exportModel(model).glsl, /ADD_BOX_ROTATE[\s\S]*mat3\(/);
+});
+
+test('rejects non-uniform parent scale', () => {
+  const group = {name: 'head', origin: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 2, 1], parent: null};
+  assert.throws(() => toCemModel('pig', [{from: [0, 0, 0], to: [1, 1, 1], parent: group}]), /non-uniform scale/);
 });

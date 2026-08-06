@@ -33,6 +33,9 @@
       assertVec3(part.size, `part ${index} size`);
       if (part.rotation) assertVec3(part.rotation, `part ${index} rotation`);
       if (part.pivot) assertVec3(part.pivot, `part ${index} pivot`);
+      if (part.rotationMatrix && (!Array.isArray(part.rotationMatrix) || part.rotationMatrix.length !== 9 || part.rotationMatrix.some((value) => !Number.isFinite(value)))) {
+        throw new Error(`part ${index} rotationMatrix must contain 9 finite numbers`);
+      }
       if (part.faces && (!Array.isArray(part.faces) || part.faces.some((face) => !Array.isArray(face) || face.length !== 4 || face.some((item) => !Number.isFinite(item))))) {
         throw new Error(`part ${index} faces must contain vec4 values`);
       }
@@ -46,13 +49,20 @@
       .join(' * ') || 'mat3(1.0)';
   }
 
+  function formatMat3(matrix) {
+    // Internal matrices are row-major; GLSL mat3 constructors are column-major.
+    const values = [matrix[0], matrix[3], matrix[6], matrix[1], matrix[4], matrix[7], matrix[2], matrix[5], matrix[8]];
+    return `mat3(${values.map(formatNumber).join(', ')})`;
+  }
+
   function emitPart(part) {
     const faces = Array.from({length: 6}, (_, index) => part.faces && part.faces[index] ? formatVec4(part.faces[index]) : EMPTY_FACE).join(', ');
-    if (!part.rotation || part.rotation.every((angle) => angle === 0)) {
+    if (!part.rotationMatrix && (!part.rotation || part.rotation.every((angle) => angle === 0))) {
       return `    ADD_BOX(${formatVec3(part.origin)}, ${formatVec3(part.size)}, ${faces})`;
     }
     const pivot = part.pivot || part.origin;
-    return `    ADD_BOX_ROTATE(${formatVec3(part.origin)}, ${formatVec3(part.size)}, ${emitRotation(part.rotation)}, ${formatVec3(pivot)}, ${faces})`;
+    const rotation = part.rotationMatrix ? formatMat3(part.rotationMatrix) : emitRotation(part.rotation);
+    return `    ADD_BOX_ROTATE(${formatVec3(part.origin)}, ${formatVec3(part.size)}, ${rotation}, ${formatVec3(pivot)}, ${faces})`;
   }
 
   function exportModel(model, modelId = 1) {

@@ -7,24 +7,68 @@ function vec3(value, fallback) {
   return Array.isArray(value) && value.length === 3 ? value.slice() : fallback.slice();
 }
 
-function assertNoRotatedParent(cube) {
-  let parent = cube.parent;
-  while (parent) {
-    if (Array.isArray(parent.rotation) && parent.rotation.some((angle) => angle !== 0)) {
-      throw new Error(`cube "${cube.name || 'unnamed'}" is inside rotated group "${parent.name || 'unnamed'}"; bake the group rotation before export`);
-    }
-    parent = parent.parent;
+function mat3Multiply(a, b) {
+  const out = Array(9).fill(0);
+  for (let row = 0; row < 3; row++) for (let col = 0; col < 3; col++) {
+    out[row * 3 + col] = a[row * 3] * b[col] + a[row * 3 + 1] * b[col + 3] + a[row * 3 + 2] * b[col + 6];
   }
+  return out;
 }
 
-function assertSingleAxisRotation(cube) {
-  const activeAxes = vec3(cube.rotation, [0, 0, 0]).filter((angle) => angle !== 0);
-  if (activeAxes.length > 1) throw new Error(`cube "${cube.name || 'unnamed'}" has multi-axis rotation; use one axis until Euler order support is added`);
+function mat3Vector(m, v) {
+  return [m[0] * v[0] + m[1] * v[1] + m[2] * v[2], m[3] * v[0] + m[4] * v[1] + m[5] * v[2], m[6] * v[0] + m[7] * v[1] + m[8] * v[2]];
+}
+
+function transpose(m) {
+  return [m[0], m[3], m[6], m[1], m[4], m[7], m[2], m[5], m[8]];
+}
+
+function eulerMatrix(rotation) {
+  const [rx, ry, rz] = rotation.map((angle) => angle * Math.PI / 180);
+  const sx = Math.sin(rx), cx = Math.cos(rx), sy = Math.sin(ry), cy = Math.cos(ry), sz = Math.sin(rz), cz = Math.cos(rz);
+  const x = [1, 0, 0, 0, cx, sx, 0, -sx, cx];
+  const y = [cy, 0, -sy, 0, 1, 0, sy, 0, cy];
+  const z = [cz, sz, 0, -sz, cz, 0, 0, 0, 1];
+  return mat3Multiply(z, mat3Multiply(y, x));
+}
+
+function uniformScale(group, cubeName) {
+  const scale = group.scale;
+  if (!scale) return 1;
+  const values = Array.isArray(scale) ? scale : [scale, scale, scale];
+  if (values.length !== 3 || values.some((value) => !Number.isFinite(value))) throw new Error(`cube "${cubeName}" has invalid group scale`);
+  if (values[0] !== values[1] || values[1] !== values[2]) throw new Error(`cube "${cubeName}" has non-uniform scale in group "${group.name || 'unnamed'}"`);
+  return values[0];
+}
+
+function bakedTransform(cube, from, to) {
+  const name = cube.name || 'unnamed';
+  const cubeRotation = vec3(cube.rotation, [0, 0, 0]);
+  const cubePivot = vec3(cube.origin, from);
+  let center = to.map((value, axis) => (value + from[axis]) / 2);
+  let rotation = eulerMatrix(cubeRotation);
+  center = cubePivot.map((value, axis) => value + mat3Vector(rotation, center.map((item, index) => item - cubePivot[index]))[axis]);
+  let sizeScale = 1;
+  let parent = cube.parent;
+  while (parent) {
+    const parentRotation = eulerMatrix(vec3(parent.rotation, [0, 0, 0]));
+    const parentOrigin = vec3(parent.origin, [0, 0, 0]);
+    const scale = uniformScale(parent, name);
+    center = parentOrigin.map((value, axis) => value + mat3Vector(parentRotation, center.map((item, index) => item - parentOrigin[index]))[axis] * scale);
+    rotation = mat3Multiply(parentRotation, rotation);
+    sizeScale *= scale;
+    parent = parent.parent;
+  }
+  const inverseRotation = transpose(rotation);
+  return {
+    origin: mat3Vector(inverseRotation, center),
+    size: to.map((value, axis) => (value - from[axis]) / 2 * sizeScale),
+    pivot: [0, 0, 0],
+    rotationMatrix: rotation
+  };
 }
 
 function toCemPart(cube, index) {
-  assertNoRotatedParent(cube);
-  assertSingleAxisRotation(cube);
   const from = vec3(cube.from, [0, 0, 0]);
   const to = vec3(cube.to, [0, 0, 0]);
   const faceOrder = ['down', 'up', 'north', 'east', 'south', 'west'];
@@ -35,16 +79,21 @@ function toCemPart(cube, index) {
     const uv = face && face.uv;
     return uv && [uv[0], uv[1], uv[2] - uv[0], uv[3] - uv[1]];
   });
+  const rotation = vec3(cube.rotation, [0, 0, 0]);
+  const hasParent = Boolean(cube.parent);
+  const multiAxis = rotation.filter((angle) => angle !== 0).length > 1;
+  const baked = (hasParent || multiAxis) ? bakedTransform(cube, from, to) : null;
   const part = {
     name: cube.name || `cube_${index + 1}`,
     type: 'cube',
-    origin: to.map((value, axis) => (value + from[axis]) / 2),
-    size: to.map((value, axis) => (value - from[axis]) / 2),
+    origin: baked ? baked.origin : to.map((value, axis) => (value + from[axis]) / 2),
+    size: baked ? baked.size : to.map((value, axis) => (value - from[axis]) / 2),
     // CEM-S's ADD_BOX_ROTATE subtracts rotPivot after applying Rotation;
     // negating Blockbench's pivot yields the standard rotate-around-pivot transform.
-    pivot: vec3(cube.origin, from).map((value) => value === 0 ? 0 : -value),
-    rotation: vec3(cube.rotation, [0, 0, 0])
+    pivot: baked ? baked.pivot : vec3(cube.origin, from).map((value) => value === 0 ? 0 : -value),
+    rotation
   };
+  if (baked) part.rotationMatrix = baked.rotationMatrix;
   if (faces.some(Boolean)) part.faces = faces;
   return part;
 }
