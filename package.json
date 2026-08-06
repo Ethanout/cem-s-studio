@@ -1,0 +1,11 @@
+{
+  "name": "cem-s-studio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Blockbench exporter for CEM-S 1.21.6",
+  "scripts": {
+    "build": "node scripts/build-plugin.js",
+    "test": "node --test test/**/*.test.js",
+    "check": "npm run build && node --check plugin.js && node --check src/cem-exporter.js && node --check src/blockbench-adapter.js && node --check src/plugin-entry.js"
+  }
+}
