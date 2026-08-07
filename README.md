@@ -24,6 +24,7 @@ The generated folder can be copied directly into Minecraft's `resourcepacks` dir
 - Parent-group and multi-axis rotations are baked into generated `mat3` transforms.
 - Blockbench face UV rectangles are preserved in CEM-S face order.
 - CEM-S 1.21.6 is the current target.
+- Detection presets for Pig, Cold Pig, Arrow, and Sheep automatically choose the CEM-S anchor face. Custom detection exposes face count/index and orientation controls without requiring GLSL edits.
 - Non-uniform scale, meshes, disabled/rotated faces, locators, and animation export are rejected with diagnostics.
 
 ## Development

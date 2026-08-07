@@ -12,7 +12,7 @@ CEM-S Studio 是面向 CEM-S 1.21.6 的 Blockbench 插件。建模、层级、�
 
 1. 在 Blockbench 新建页面选择 **CEM-S Studio** 项目类型。
 2. 像普通 Blockbench 项目一样创建 Group、Cube、纹理和 UV。
-3. 通过 **工具 -> CEM-S Studio Project Settings** 设置模型 ID、目标实体、纹理标记像素和资源包信息。
+3. 通过 **工具 -> CEM-S Studio Project Settings** 设置模型 ID、目标实体、检测 preset、纹理标记像素和资源包信息。Pig、Cold Pig、Arrow、Sheep 会自动配置 CEM-S 所需的锚点面；其他实体选择 Custom 后填写 vanilla 模型的面数与锚点面编号。
 4. 通过 **文件 -> Save CEM-S Studio Project** 保存 `.cemst` 项目，以后可以直接重新打开继续编辑。
 5. 通过 **文件 -> 导出 -> Build CEM-S Resource Pack** 选择：
    - **Create a new resource pack**：选择存放位置后，插件按资源包名称自动创建子文件夹和完整资源包；不会覆盖同名的非空文件夹。
@@ -29,6 +29,7 @@ CEM-S Studio 是面向 CEM-S 1.21.6 的 Blockbench 插件。建模、层级、�
 - 旋转父 Group 和多层 Group 变换。
 - `.cemst` 项目的保存与重新打开。
 - 新建完整资源包或更新已有 CEM-S 资源包。
+- 常见实体 detection preset，以及不需要手写 GLSL 的 Custom 检测参数。
 
 暂不支持 Mesh、动画、禁用/旋转面和非统一 Group 缩放。遇到这些内容时，插件会停止导出并给出错误，而不会静默生成错误模型。
 

@@ -201,8 +201,13 @@ return {toCemModel};
   root.CemSProject = api;
 }(typeof globalThis === 'undefined' ? this : globalThis, function () {
   const CURRENT_VERSION = 1;
-  const DEFAULT_PIXEL = [63, 0];
-  const DEFAULT_COLOR = [0, 0, 1, 255];
+  const DETECTION_PRESETS = {
+    pig: {pixel: [63, 0], color: [255, 0, 0, 255], face: {mode: 'vertex_id', count: 42, index: 3}, reverse: true, corner: 'default', size: 1, hideUnmatched: false},
+    cold_pig: {pixel: [63, 0], color: [3, 0, 0, 255], face: {mode: 'vertex_id', count: 84, index: 3}, reverse: true, corner: 'default', size: 1, hideUnmatched: false},
+    arrow: {pixel: [31, 0], color: [0, 0, 1, 255], face: {mode: 'vertex_id', count: 9, index: 0}, reverse: true, corner: 'yx', size: 1.5, hideUnmatched: true},
+    sheep: {pixel: [63, 0], color: [2, 0, 0, 255], face: {mode: 'all', count: 1, index: 0}, reverse: false, corner: 'default', size: 1.2, hideUnmatched: false},
+    custom: {pixel: [63, 0], color: [0, 0, 1, 255], face: {mode: 'vertex_id', count: 1, index: 0}, reverse: false, corner: 'yx', size: 1, hideUnmatched: false}
+  };
 
   function clone(value) {
     return JSON.parse(JSON.stringify(value));
@@ -210,6 +215,26 @@ return {toCemModel};
 
   function assertModelId(value) {
     if (!Number.isInteger(value) || value < 0) throw new Error('modelId must be a non-negative integer');
+  }
+
+  function detectionForPreset(name) {
+    if (!Object.prototype.hasOwnProperty.call(DETECTION_PRESETS, name)) throw new Error(`unsupported detection preset: ${name}`);
+    return {preset: name, ...clone(DETECTION_PRESETS[name])};
+  }
+
+  function normalizeDetection(input, fallbackPreset = 'pig') {
+    const source = input || {};
+    const presetName = source.preset || (source.face ? fallbackPreset : 'custom');
+    const detection = detectionForPreset(presetName);
+    if (source.pixel) detection.pixel = clone(source.pixel);
+    if (source.color) detection.color = clone(source.color);
+    if (source.face) detection.face = Object.assign({}, detection.face, clone(source.face));
+    if (source.reverse !== undefined) detection.reverse = source.reverse;
+    if (source.corner !== undefined) detection.corner = source.corner;
+    if (source.size !== undefined) detection.size = source.size;
+    if (source.hideUnmatched !== undefined) detection.hideUnmatched = source.hideUnmatched;
+    detection.mode = 'texture_marker';
+    return detection;
   }
 
   function validateProject(document) {
@@ -221,12 +246,23 @@ return {toCemModel};
     const detection = document.project.detection;
     if (!Array.isArray(detection.pixel) || detection.pixel.length !== 2 || detection.pixel.some((value) => !Number.isInteger(value) || value < 0)) throw new Error('detection.pixel must be a non-negative ivec2');
     if (!Array.isArray(detection.color) || detection.color.length !== 4 || detection.color.some((value) => !Number.isInteger(value) || value < 0 || value > 255)) throw new Error('detection.color must be an RGBA byte color');
+    if (!Object.prototype.hasOwnProperty.call(DETECTION_PRESETS, detection.preset)) throw new Error(`unsupported detection preset: ${detection.preset}`);
+    if (!detection.face || !['vertex_id', 'all'].includes(detection.face.mode)) throw new Error('detection.face.mode must be vertex_id or all');
+    if (!Number.isInteger(detection.face.count) || detection.face.count < 1) throw new Error('detection.face.count must be a positive integer');
+    if (!Number.isInteger(detection.face.index) || detection.face.index < 0 || detection.face.index >= detection.face.count) throw new Error('detection.face.index must be within the face count');
+    if (typeof detection.reverse !== 'boolean') throw new Error('detection.reverse must be boolean');
+    if (!['default', 'yx'].includes(detection.corner)) throw new Error('detection.corner must be default or yx');
+    if (!Number.isFinite(detection.size) || detection.size <= 0) throw new Error('detection.size must be positive');
+    if (typeof detection.hideUnmatched !== 'boolean') throw new Error('detection.hideUnmatched must be boolean');
     return document;
   }
 
   function createProject(options = {}) {
     const name = options.name || 'CEM-S Model';
     const modelId = options.modelId === undefined ? 1 : options.modelId;
+    const targetEntity = options.targetEntity || 'pig';
+    const inferredPreset = Object.prototype.hasOwnProperty.call(DETECTION_PRESETS, targetEntity) ? targetEntity : 'pig';
+    const detection = normalizeDetection(options.detection || {preset: inferredPreset}, inferredPreset);
     assertModelId(modelId);
     return {
       format: 'cemst',
@@ -236,12 +272,8 @@ return {toCemModel};
         modelId,
         cemVersion: options.cemVersion || '1.21.6',
         targetType: options.targetType || 'entity',
-        targetEntity: options.targetEntity || 'entity',
-        detection: {
-          mode: 'texture_marker',
-          pixel: clone(options.detection?.pixel || DEFAULT_PIXEL),
-          color: clone(options.detection?.color || DEFAULT_COLOR)
-        },
+        targetEntity,
+        detection,
         resourcePack: {
           name: options.resourcePack?.name || options.packName || `${name} Pack`,
           description: options.resourcePack?.description || options.packDescription || `CEM-S Studio resource pack for ${name}`,
@@ -259,10 +291,11 @@ return {toCemModel};
 
   function parseProject(content) {
     const document = typeof content === 'string' ? JSON.parse(content) : clone(content);
+    if (document?.project?.detection) document.project.detection = normalizeDetection(document.project.detection, 'custom');
     return clone(validateProject(document));
   }
 
-  return {CURRENT_VERSION, createProject, serializeProject, parseProject, validateProject};
+  return {CURRENT_VERSION, DETECTION_PRESETS: clone(DETECTION_PRESETS), detectionForPreset, createProject, serializeProject, parseProject, validateProject};
 }));
 
 
@@ -295,7 +328,18 @@ return {toCemModel};
     const detection = project.project.detection;
     const color = detection.color.join(', ');
     const [x, y] = detection.pixel;
-    return `// Generated by CEM-S Studio.\nif (texelFetch(Sampler0, ivec2(${x}, ${y}), 0) * 255 == vec4(${color}))\n{\n    cem = ${project.project.modelId};\n    cem_reverse = 0;\n    corner = corners[(gl_VertexID) % 4].yx;\n    cem_size = 1;\n}`;
+    const setup = [
+      `cem = ${project.project.modelId};`,
+      `cem_reverse = ${detection.reverse ? 1 : 0};`,
+      detection.corner === 'yx' ? 'corner = corners[(gl_VertexID) % 4].yx;' : null,
+      `cem_size = ${detection.size};`
+    ].filter(Boolean).map(line => `        ${line}`).join('\n');
+    const marker = `round(texelFetch(Sampler0, ivec2(${x}, ${y}), 0) * 255) == vec4(${color})`;
+    if (detection.face.mode === 'all') {
+      return `// Generated by CEM-S Studio.\nif (${marker})\n{\n${setup.replace(/^ {8}/gm, '    ')}\n}`;
+    }
+    const unmatched = detection.hideUnmatched ? '\n    else\n    {\n        gl_Position = vec4(0);\n    }' : '';
+    return `// Generated by CEM-S Studio.\nif (${marker})\n{\n    if (gl_VertexID / 4 % ${detection.face.count} == ${detection.face.index})\n    {\n${setup}\n    }${unmatched}\n}`;
   }
 
   function buildPackFiles(document, modelGlsl, options = {}) {
@@ -400,7 +444,7 @@ SOFTWARE.
 (function () {
   const {exportModel} = CemSExporter;
   const {toCemModel} = CemSBlockbenchAdapter;
-  const {createProject, parseProject, serializeProject} = CemSProject;
+  const {createProject, parseProject, serializeProject, detectionForPreset} = CemSProject;
   const {slugify, buildPackFiles, mergePackFiles} = CemSPackBuilder;
   const {loadRuntimeFiles} = CemSRuntime;
   let exportAction;
@@ -431,13 +475,24 @@ SOFTWARE.
 
   function setSettings(result) {
     const current = getSettings();
-    const color = [result.marker_r, result.marker_g, result.marker_b, result.marker_a].map(Number);
+    const presetName = result.detection_preset;
+    const detection = presetName === 'custom' ? {
+      preset: 'custom',
+      mode: 'texture_marker',
+      pixel: [Number(result.marker_x), Number(result.marker_y)],
+      color: [result.marker_r, result.marker_g, result.marker_b, result.marker_a].map(Number),
+      face: {mode: 'vertex_id', count: Number(result.face_count), index: Number(result.face_number)},
+      reverse: !!result.reverse,
+      corner: result.corner_yx ? 'yx' : 'default',
+      size: Number(result.cem_size),
+      hideUnmatched: !!result.hide_unmatched
+    } : detectionForPreset(presetName);
     const next = createProject({
       ...current,
       name: result.project_name,
       modelId: Number(result.model_id),
-      targetEntity: result.target_entity,
-      detection: {mode: 'texture_marker', pixel: [Number(result.marker_x), Number(result.marker_y)], color},
+      targetEntity: presetName === 'custom' ? result.target_entity : presetName,
+      detection,
       resourcePack: {name: result.pack_name, description: result.pack_description, packFormat: current.resourcePack.packFormat}
     }).project;
     Project.cem_studio = next;
@@ -454,12 +509,19 @@ SOFTWARE.
         project_name: {label: 'Project name', type: 'text', value: settings.name},
         model_id: {label: 'Model ID', description: 'This ID must match the generated detection rule.', type: 'number', value: settings.modelId, min: 0, step: 1},
         target_entity: {label: 'Target entity', description: 'Minecraft entity identifier, for example pig.', type: 'text', value: settings.targetEntity},
+        detection_preset: {label: 'Detection preset', description: 'Presets configure the CEM-S anchor face automatically.', type: 'select', options: {pig: 'Pig', cold_pig: 'Cold Pig', arrow: 'Arrow', sheep: 'Sheep', custom: 'Custom'}, value: settings.detection.preset},
         marker_x: {label: 'Marker pixel X', type: 'number', value: settings.detection.pixel[0], min: 0, step: 1},
         marker_y: {label: 'Marker pixel Y', type: 'number', value: settings.detection.pixel[1], min: 0, step: 1},
         marker_r: {label: 'Marker red', type: 'number', value: settings.detection.color[0], min: 0, max: 255, step: 1},
         marker_g: {label: 'Marker green', type: 'number', value: settings.detection.color[1], min: 0, max: 255, step: 1},
         marker_b: {label: 'Marker blue', type: 'number', value: settings.detection.color[2], min: 0, max: 255, step: 1},
         marker_a: {label: 'Marker alpha', type: 'number', value: settings.detection.color[3], min: 0, max: 255, step: 1},
+        face_count: {label: 'Faces per entity', description: 'Custom preset: usually the vanilla model cube count multiplied by 6.', type: 'number', value: settings.detection.face.count, min: 1, step: 1},
+        face_number: {label: 'Anchor face', description: 'Custom preset: zero-based face index used as the CEM-S anchor.', type: 'number', value: settings.detection.face.index, min: 0, step: 1},
+        reverse: {label: 'Reverse model axes', type: 'checkbox', value: settings.detection.reverse},
+        corner_yx: {label: 'Transpose anchor corners', type: 'checkbox', value: settings.detection.corner === 'yx'},
+        cem_size: {label: 'CEM area size', type: 'number', value: settings.detection.size, min: 0.01, step: 0.1},
+        hide_unmatched: {label: 'Hide unmatched vanilla faces', type: 'checkbox', value: settings.detection.hideUnmatched},
         pack_name: {label: 'Resource pack name', type: 'text', value: settings.resourcePack.name},
         pack_description: {label: 'Resource pack description', type: 'text', value: settings.resourcePack.description}
       },
@@ -622,7 +684,7 @@ SOFTWARE.
     author: 'CEM-S Studio contributors',
     description: 'A Blockbench project format and resource-pack builder for CEM-S 1.21.6.',
     icon: 'extension',
-    version: '0.2.0',
+    version: '0.2.1',
     min_version: '4.12.0',
     variant: 'desktop',
     onload() { installProjectFormat(); },

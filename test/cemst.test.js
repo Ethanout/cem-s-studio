@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const {createProject, serializeProject, parseProject} = require('../src/cemst.js');
+const {createProject, serializeProject, parseProject, detectionForPreset} = require('../src/cemst.js');
 const {buildPackFiles, mergePackFiles, upsertManagedSection} = require('../src/pack-builder.js');
 const {loadRuntimeFiles} = require('../src/cem-runtime.js');
 
@@ -10,6 +10,9 @@ test('creates a versioned CEM-S Studio project with usable defaults', () => {
   assert.equal(project.formatVersion, 1);
   assert.equal(project.project.modelId, 7);
   assert.deepEqual(project.project.detection.pixel, [63, 0]);
+  assert.equal(project.project.detection.preset, 'pig');
+  assert.deepEqual(project.project.detection.face, {mode: 'vertex_id', count: 42, index: 3});
+  assert.equal(project.project.detection.reverse, true);
 });
 
 test('serializes and parses a CEM-S Studio project without losing Blockbench data', () => {
@@ -23,6 +26,24 @@ test('rejects unsupported project versions and invalid IDs', () => {
   assert.throws(() => createProject({modelId: -1}), /modelId must be/);
 });
 
+test('migrates 0.2.0 cemst detection settings without losing project data', () => {
+  const legacy = createProject({name: 'Legacy', modelId: 4});
+  legacy.project.detection = {mode: 'texture_marker', pixel: [31, 0], color: [0, 0, 1, 255]};
+  const migrated = parseProject(JSON.stringify(legacy));
+  assert.equal(migrated.project.detection.preset, 'custom');
+  assert.deepEqual(migrated.project.detection.pixel, [31, 0]);
+  assert.deepEqual(migrated.project.detection.face, {mode: 'vertex_id', count: 1, index: 0});
+});
+
+test('provides CEM-S detection presets for common entity models', () => {
+  const arrow = detectionForPreset('arrow');
+  assert.deepEqual(arrow.pixel, [31, 0]);
+  assert.deepEqual(arrow.face, {mode: 'vertex_id', count: 9, index: 0});
+  assert.equal(arrow.reverse, true);
+  assert.equal(arrow.corner, 'yx');
+  assert.equal(arrow.hideUnmatched, true);
+});
+
 test('builds a new resource pack with managed model and detection files', () => {
   const project = createProject({name: 'Pig Ears', modelId: 7, targetEntity: 'pig'});
   const files = buildPackFiles(project, 'case 7: { }', {runtimeFiles: {'assets/minecraft/shaders/core/entity.fsh': 'runtime'}});
@@ -30,6 +51,8 @@ test('builds a new resource pack with managed model and detection files', () => 
   assert.equal(files['assets/minecraft/shaders/core/entity.fsh'], 'runtime');
   assert.match(files['assets/minecraft/shaders/include/cem_user/models.glsl'], /#moj_import <cem_user\/models\/entity\/pig_ears\.glsl>/);
   assert.match(files['assets/minecraft/shaders/include/cem_user/detection/entity/pig_ears.glsl'], /ivec2\(63, 0\)/);
+  assert.match(files['assets/minecraft/shaders/include/cem_user/detection/entity/pig_ears.glsl'], /gl_VertexID \/ 4 % 42 == 3/);
+  assert.match(files['assets/minecraft/shaders/include/cem_user/detection/entity/pig_ears.glsl'], /cem_reverse = 1/);
   assert.match(files['assets/minecraft/shaders/include/cem_user/models/entity/pig_ears.glsl'], /case 7/);
 });
 
