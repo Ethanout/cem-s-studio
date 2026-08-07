@@ -15,3 +15,8 @@ test('registers the CEM-S Studio project format and resource-pack workflow', () 
   assert.match(source, /new Codec\(['"]cemst/);
   assert.match(source, /Build CEM-S Resource Pack/);
 });
+
+test('keeps the standalone CEM-S export action inside CEM-S Studio projects', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'plugin-entry.js'), 'utf8');
+  assert.match(source, /export_cem_s_studio[\s\S]*condition: \(\) => Format === projectFormat && !!Project/);
+});

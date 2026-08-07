@@ -25,6 +25,7 @@ The generated folder can be copied directly into Minecraft's `resourcepacks` dir
 - Blockbench face UV rectangles are preserved in CEM-S face order.
 - CEM-S 1.21.6 is the current target.
 - Detection presets for Pig, Cold Pig, Arrow, and Sheep automatically choose the CEM-S anchor face. Custom detection exposes face count/index and orientation controls without requiring GLSL edits.
+- Presets include the CEM-S texture marker position and color. For Custom, put the configured marker pixel/color in the entity texture; the plugin generates the detection GLSL for you.
 - Non-uniform scale, meshes, disabled/rotated faces, locators, and animation export are rejected with diagnostics.
 
 ## Development

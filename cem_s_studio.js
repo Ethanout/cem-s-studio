@@ -672,7 +672,7 @@ SOFTWARE.
     saveAction = new Action('save_cemst_project', {name: 'Save CEM-S Studio Project', icon: 'save', category: 'file', condition: () => Format === projectFormat && !!Project, click: () => projectCodec.export()});
     settingsAction = new Action('cem_s_studio_project_settings', {name: 'CEM-S Studio Project Settings', icon: 'settings', category: 'tools', condition: () => Format === projectFormat && !!Project, click: showProjectSettings});
     buildAction = new Action('build_cem_s_resource_pack', {name: 'Build CEM-S Resource Pack', icon: 'folder_zip', category: 'file', condition: () => Format === projectFormat && !!Project, click: showBuildDialog});
-    exportAction = new Action('export_cem_s_studio', {name: 'Export CEM-S 1.21.6 Model', icon: 'save', category: 'file.export', condition: () => !!Project, click: exportCurrentProject});
+    exportAction = new Action('export_cem_s_studio', {name: 'Export CEM-S 1.21.6 Model', icon: 'save', category: 'file.export', condition: () => Format === projectFormat && !!Project, click: exportCurrentProject});
     MenuBar.addAction(saveAction, 'file');
     MenuBar.addAction(settingsAction, 'tools');
     MenuBar.addAction(buildAction, 'file.export');
@@ -684,7 +684,7 @@ SOFTWARE.
     author: 'CEM-S Studio contributors',
     description: 'A Blockbench project format and resource-pack builder for CEM-S 1.21.6.',
     icon: 'extension',
-    version: '0.2.1',
+    version: '0.2.2',
     min_version: '4.12.0',
     variant: 'desktop',
     onload() { installProjectFormat(); },
