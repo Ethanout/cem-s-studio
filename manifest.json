@@ -2,8 +2,8 @@
   "id": "cem_s_studio",
   "title": "CEM-S Studio",
   "author": "CEM-S Studio contributors",
-  "description": "Blockbench exporter for CEM-S 1.21.6 GLSL models.",
-  "version": "0.1.0",
+  "description": "Blockbench project format and resource-pack builder for CEM-S 1.21.6.",
+  "version": "0.2.0",
   "min_version": "4.12.0",
   "main": "cem_s_studio.js",
   "variant": "desktop"

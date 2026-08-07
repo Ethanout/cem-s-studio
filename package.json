@@ -1,11 +1,13 @@
 {
   "name": "cem-s-studio",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "Blockbench exporter for CEM-S 1.21.6",
+  "description": "Blockbench project format and resource-pack builder for CEM-S 1.21.6",
   "scripts": {
     "build": "node scripts/build-plugin.js",
+    "vendor:runtime": "node scripts/vendor-cem-runtime.js",
     "test": "node --test test/**/*.test.js",
-    "check": "npm run build && node --check cem_s_studio.js && node --check src/cem-exporter.js && node --check src/blockbench-adapter.js && node --check src/plugin-entry.js"
+    "test:blockbench": "node scripts/blockbench-smoke-test.js",
+    "check": "npm run build && node --check cem_s_studio.js && node --check src/cem-exporter.js && node --check src/blockbench-adapter.js && node --check src/cemst.js && node --check src/pack-builder.js && node --check src/cem-runtime.js && node --check src/plugin-entry.js && node --check scripts/build-plugin.js && node --check scripts/vendor-cem-runtime.js && node --check scripts/blockbench-smoke-test.js"
   }
 }
