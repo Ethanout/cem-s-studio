@@ -332,21 +332,21 @@ return {toCemModel, isReferenceCube};
   // attached author geometry can be parented to them without exporting guides.
   const PLAYER_ANCHORS = {
     root: {origin: [0, 0, 0]},
-    body: {origin: [0, 0, 0]},
-    head: {origin: [0, 0, 0]},
-    left_arm: {origin: [5, 2, 0]},
-    right_arm: {origin: [-5, 2, 0]},
+    body: {origin: [0, 24, 0]},
+    head: {origin: [0, 24, 0]},
+    left_arm: {origin: [5, 22, 0]},
+    right_arm: {origin: [-5, 22, 0]},
     left_leg: {origin: [1.9, 12, 0]},
     right_leg: {origin: [-1.9, 12, 0]}
   };
 
   const PLAYER_GUIDES = {
-    body: {from: [-4, 0, -2], to: [4, 12, 2], origin: [0, 0, 0]},
-    head: {from: [-4, -8, -4], to: [4, 0, 4], origin: [0, 0, 0]},
-    left_arm: {from: [4, 0, -2], to: [8, 12, 2], origin: [5, 2, 0]},
-    right_arm: {from: [-8, 0, -2], to: [-4, 12, 2], origin: [-5, 2, 0]},
-    left_leg: {from: [0, 12, -2], to: [4, 24, 2], origin: [1.9, 12, 0]},
-    right_leg: {from: [-4, 12, -2], to: [0, 24, 2], origin: [-1.9, 12, 0]}
+    body: {from: [-4, 12, -2], to: [4, 24, 2], origin: [0, 24, 0]},
+    head: {from: [-4, 24, -4], to: [4, 32, 4], origin: [0, 24, 0]},
+    left_arm: {from: [4, 12, -2], to: [8, 24, 2], origin: [5, 22, 0]},
+    right_arm: {from: [-8, 12, -2], to: [-4, 24, 2], origin: [-5, 22, 0]},
+    left_leg: {from: [0, 0, -2], to: [4, 12, 2], origin: [1.9, 12, 0]},
+    right_leg: {from: [-4, 0, -2], to: [0, 12, 2], origin: [-1.9, 12, 0]}
   };
 
   function clone(value) {
