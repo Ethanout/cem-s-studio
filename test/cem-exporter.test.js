@@ -37,6 +37,14 @@ test('converts a Blockbench cube to the exporter model', () => {
   assert.deepEqual(model, {name: 'pig_ears', parts: [{name: 'ear', type: 'cube', origin: [0, 1.5, 3], size: [2, 1.5, 2], pivot: [0, -1, -2], rotation: [0, 15, 0], faces: [[4, 5, 6, 8], undefined, undefined, undefined, undefined, undefined]}]});
 });
 
+test('does not export registered reference guide cubes', () => {
+  const model = toCemModel('pig', [
+    {name: '[CEM-S Reference] body', uuid: 'guide-1', from: [0, 0, 0], to: [4, 4, 4]},
+    {name: 'jetpack', uuid: 'part-1', from: [0, 0, 0], to: [1, 1, 1]}
+  ], {reference: {guides: ['guide-1']}});
+  assert.deepEqual(model.parts.map(part => part.name), ['jetpack']);
+});
+
 test('supports cubes inside rotated Blockbench groups', () => {
   const group = {name: 'head', rotation: [0, 30, 0], parent: null};
   const model = toCemModel('pig', [{from: [0, 0, 0], to: [1, 1, 1], parent: group}]);

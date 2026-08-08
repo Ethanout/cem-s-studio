@@ -42,6 +42,25 @@ test('provides CEM-S detection presets for common entity models', () => {
   assert.equal(arrow.reverse, true);
   assert.equal(arrow.corner, 'yx');
   assert.equal(arrow.hideUnmatched, true);
+  const elytra = detectionForPreset('elytra');
+  assert.equal(elytra.channel, 'armor');
+  assert.deepEqual(elytra.pixel, [1, 0]);
+  assert.deepEqual(elytra.face, {mode: 'vertex_id', count: 12, index: 5});
+});
+
+test('round-trips a custom reference rig and attachment bindings', () => {
+  const project = createProject({
+    name: 'Jetpack',
+    targetType: 'armor',
+    targetEntity: 'elytra',
+    detection: {preset: 'elytra'},
+    reference: {rig: 'custom', root: 'root-uuid', anchors: {body: 'body-uuid'}, bindings: {'pack-uuid': 'body'}, guides: ['body-cube-uuid']}
+  });
+  const parsed = parseProject(serializeProject(project));
+  assert.equal(parsed.project.targetType, 'armor');
+  assert.equal(parsed.project.reference.rig, 'custom');
+  assert.deepEqual(parsed.project.reference.bindings, {'pack-uuid': 'body'});
+  assert.deepEqual(parsed.project.reference.guides, ['body-cube-uuid']);
 });
 
 test('builds a new resource pack with managed model and detection files', () => {
@@ -54,6 +73,14 @@ test('builds a new resource pack with managed model and detection files', () => 
   assert.match(files['assets/minecraft/shaders/include/cem_user/detection/entity/pig_ears.glsl'], /gl_VertexID \/ 4 % 42 == 3/);
   assert.match(files['assets/minecraft/shaders/include/cem_user/detection/entity/pig_ears.glsl'], /cem_reverse = 1/);
   assert.match(files['assets/minecraft/shaders/include/cem_user/models/entity/pig_ears.glsl'], /case 7/);
+});
+
+test('builds armor-target paths and detection files', () => {
+  const project = createProject({name: 'Jetpack', targetType: 'armor', targetEntity: 'elytra', detection: {preset: 'elytra'}});
+  const files = buildPackFiles(project, 'case 1: { }');
+  assert.match(files['assets/minecraft/shaders/include/cem_user/models.glsl'], /cem_user\/models\/armor\/jetpack\.glsl/);
+  assert.match(files['assets/minecraft/shaders/include/cem_user/detection/armor/jetpack.glsl'], /ivec2\(1, 0\)/);
+  assert.match(files['assets/minecraft/shaders/include/cem_user/detection/armor/jetpack.glsl'], /% 12 == 5/);
 });
 
 test('upserts managed sections without deleting user content', () => {

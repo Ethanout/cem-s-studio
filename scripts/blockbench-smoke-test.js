@@ -119,7 +119,11 @@ async function main() {
           actions: {
             save: !!BarItems.save_cemst_project,
             settings: !!BarItems.cem_s_studio_project_settings,
-            buildPack: !!BarItems.build_cem_s_resource_pack
+            buildPack: !!BarItems.build_cem_s_resource_pack,
+            addReference: !!BarItems.cem_s_studio_add_player_reference,
+            importReference: !!BarItems.cem_s_studio_import_reference,
+            registerReference: !!BarItems.cem_s_studio_register_reference,
+            bindReference: !!BarItems.cem_s_studio_bind_reference
           },
           rawFormat: raw.format,
           parsedFormat: parsed.format,
@@ -142,7 +146,7 @@ async function main() {
     if (probe.exceptionDetails) exceptions.push(probe.exceptionDetails.text);
     const result = probe.result.value;
     if (!result?.ok) throw new Error(result?.message || exceptions.join('\n') || 'Blockbench probe failed');
-    const required = [result.formatSelected, result.codecRegistered, result.actions.save, result.actions.settings, result.actions.buildPack, result.rawFormat === 'cemst', result.parsedFormat === 'cemst', result.formatVersion === 1, result.projectName === 'Smoke Pig', result.projectHasSettings, result.cubeCountAfterOpen === 1, result.settingsFields.includes('model_id'), result.settingsFields.includes('target_entity'), result.settingsFields.includes('detection_preset'), result.settingsFields.includes('face_count'), result.settingsFields.includes('face_number'), result.buildModes.includes('new'), result.buildModes.includes('update')];
+    const required = [result.formatSelected, result.codecRegistered, result.actions.save, result.actions.settings, result.actions.buildPack, result.actions.addReference, result.actions.importReference, result.actions.registerReference, result.actions.bindReference, result.rawFormat === 'cemst', result.parsedFormat === 'cemst', result.formatVersion === 1, result.projectName === 'Smoke Pig', result.projectHasSettings, result.cubeCountAfterOpen === 1, result.settingsFields.includes('model_id'), result.settingsFields.includes('target_entity'), result.settingsFields.includes('render_target'), result.settingsFields.includes('detection_preset'), result.settingsFields.includes('face_count'), result.settingsFields.includes('face_number'), result.buildModes.includes('new'), result.buildModes.includes('update')];
     if (required.some(value => !value)) throw new Error(`Blockbench probe returned incomplete state: ${JSON.stringify(result)}`);
     const expectedPackFiles = [
       'assets/minecraft/shaders/include/cem_user/models.glsl',

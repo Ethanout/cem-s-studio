@@ -98,10 +98,16 @@ function toCemPart(cube, index) {
   return part;
 }
 
-function toCemModel(name, cubes) {
-  if (!Array.isArray(cubes)) throw new Error('cubes must be an array');
-  return {name: name || 'cem_model', parts: cubes.map(toCemPart)};
+function isReferenceCube(cube, reference) {
+  if (Array.isArray(reference?.guides) && reference.guides.includes(cube?.uuid)) return true;
+  return typeof cube?.name === 'string' && cube.name.startsWith('[CEM-S Reference]');
 }
 
-return {toCemModel};
+function toCemModel(name, cubes, options = {}) {
+  if (!Array.isArray(cubes)) throw new Error('cubes must be an array');
+  const exportable = options.includeReference ? cubes : cubes.filter((cube) => !isReferenceCube(cube, options.reference));
+  return {name: name || 'cem_model', parts: exportable.map(toCemPart)};
+}
+
+return {toCemModel, isReferenceCube};
 }));
