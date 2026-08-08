@@ -1,8 +1,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const {createProject, serializeProject, parseProject, detectionForPreset} = require('../src/cemst.js');
+const {SUPPORTED_CEM_VERSIONS, createProject, serializeProject, parseProject, detectionForPreset} = require('../src/cemst.js');
 const {buildPackFiles, mergePackFiles, upsertManagedSection} = require('../src/pack-builder.js');
-const {loadRuntimeFiles} = require('../src/cem-runtime.js');
+const {RUNTIME_PROFILES, loadRuntimeFiles, sourcesFor} = require('../src/cem-runtime.js');
 
 test('creates a versioned CEM-S Studio project with usable defaults', () => {
   const project = createProject({name: 'Pig Ears', modelId: 7, targetEntity: 'pig'});
@@ -19,6 +19,13 @@ test('serializes and parses a CEM-S Studio project without losing Blockbench dat
   const input = createProject({name: 'Demo', modelId: 2, blockbench: {meta: {model_format: 'cem_s_studio'}, outliner: []}});
   const output = parseProject(serializeProject(input));
   assert.deepEqual(output, input);
+});
+
+test('selects pack formats for Minecraft 1.21.11 and 26.1+', () => {
+  assert.equal(createProject({cemVersion: '1.21.11'}).project.resourcePack.packFormat, 75);
+  assert.equal(createProject({cemVersion: '26.1+'}).project.resourcePack.packFormat, 84);
+  assert.equal(SUPPORTED_CEM_VERSIONS['1.21.6'], 63);
+  assert.throws(() => createProject({cemVersion: 'unsupported'}), /unsupported Minecraft runtime/);
 });
 
 test('rejects unsupported project versions and invalid IDs', () => {
@@ -67,12 +74,23 @@ test('builds a new resource pack with managed model and detection files', () => 
   const project = createProject({name: 'Pig Ears', modelId: 7, targetEntity: 'pig'});
   const files = buildPackFiles(project, 'case 7: { }', {runtimeFiles: {'assets/minecraft/shaders/core/entity.fsh': 'runtime'}});
   assert.equal(JSON.parse(files['pack.mcmeta']).pack.pack_format, 63);
+  assert.equal(JSON.parse(files['pack.mcmeta']).pack.min_format, undefined);
   assert.equal(files['assets/minecraft/shaders/core/entity.fsh'], 'runtime');
   assert.match(files['assets/minecraft/shaders/include/cem_user/models.glsl'], /#moj_import <cem_user\/models\/entity\/pig_ears\.glsl>/);
   assert.match(files['assets/minecraft/shaders/include/cem_user/detection/entity/pig_ears.glsl'], /ivec2\(63, 0\)/);
   assert.match(files['assets/minecraft/shaders/include/cem_user/detection/entity/pig_ears.glsl'], /gl_VertexID \/ 4 % 42 == 3/);
   assert.match(files['assets/minecraft/shaders/include/cem_user/detection/entity/pig_ears.glsl'], /cem_reverse = 1/);
   assert.match(files['assets/minecraft/shaders/include/cem_user/models/entity/pig_ears.glsl'], /case 7/);
+});
+
+test('declares the modern resource-pack format range for 1.21.11 and 26.1+', () => {
+  for (const [cemVersion, expectedFormat] of [['1.21.11', 75], ['26.1+', 84]]) {
+    const project = createProject({name: 'Modern', cemVersion});
+    const pack = JSON.parse(buildPackFiles(project, 'case 1: { }')['pack.mcmeta']).pack;
+    assert.equal(pack.pack_format, expectedFormat);
+    assert.equal(pack.min_format, expectedFormat);
+    assert.equal(pack.max_format, expectedFormat);
+  }
 });
 
 test('builds armor-target paths and detection files', () => {
@@ -110,23 +128,22 @@ test('updates an existing pack while preserving user aggregator content and pack
   assert.equal(Object.keys(merged).filter((file) => file.endsWith('pig_ears.glsl')).length, 2);
 });
 
-test('loads the pinned CEM-S runtime files for a new pack', async () => {
-  const fetched = [];
-  const files = await loadRuntimeFiles(async (url) => {
-    fetched.push(url);
-    return {ok: true, text: async () => `runtime:${url}`};
-  });
-  assert.ok(Object.keys(files).some((file) => file.endsWith('/entity.fsh')));
-  assert.match(files['THIRD-PARTY-LICENSES/CEM-S-MIT.txt'], /Copyright \(c\) 2024 DartCat25/);
-  assert.equal(fetched.length, 5);
-  assert.ok(fetched.every((url) => url.includes('/fb82f20698e8972f241574a9390413f385c8bddb/')));
-  assert.ok(fetched.every((url) => !url.endsWith('/noise.glsl')));
+test('defines version-specific CEM-S runtime profiles', () => {
+  assert.deepEqual(Object.keys(RUNTIME_PROFILES), ['1.21.6', '1.21.11', '26.1+']);
+  assert.equal(RUNTIME_PROFILES['1.21.11'].packFormat, 75);
+  assert.equal(RUNTIME_PROFILES['26.1+'].gameVersion, '26.1.2');
+  assert.match(sourcesFor('1.21.11')['assets/minecraft/shaders/core/entity.vsh'], /^1\.21\.11\//);
+  assert.match(sourcesFor('26.1+')['assets/minecraft/shaders/core/entity.fsh'], /^26\.1\.2\//);
 });
 
 test('uses the runtime bundled with the plugin without network access', async () => {
-  globalThis.CemSBundledRuntime = {'assets/minecraft/shaders/core/entity.fsh': 'bundled runtime'};
+  globalThis.CemSBundledRuntime = {
+    '1.21.6': {'assets/minecraft/shaders/core/entity.fsh': 'legacy runtime'},
+    '1.21.11': {'assets/minecraft/shaders/core/entity.fsh': 'bundled runtime'},
+    '26.1+': {'assets/minecraft/shaders/core/entity.fsh': 'future runtime'}
+  };
   try {
-    const files = await loadRuntimeFiles();
+    const files = await loadRuntimeFiles('1.21.11');
     assert.equal(files['assets/minecraft/shaders/core/entity.fsh'], 'bundled runtime');
     assert.match(files['THIRD-PARTY-LICENSES/CEM-S-MIT.txt'], /MIT License/);
   } finally {

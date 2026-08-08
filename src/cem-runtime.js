@@ -27,7 +27,42 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 `;
-  const SOURCES = {
+
+  const SHARED_SOURCES = {
+    'assets/minecraft/shaders/include/cem/frag_funcs.glsl': 'assets/minecraft/shaders/include/cem/frag_funcs.glsl',
+    'assets/minecraft/shaders/include/cem/frag_main_setup.glsl': 'assets/minecraft/shaders/include/cem/frag_main_setup.glsl',
+    'assets/minecraft/shaders/include/cem/vert_setup.glsl': 'assets/minecraft/shaders/include/cem/vert_setup.glsl'
+  };
+  const RUNTIME_PROFILES = {
+    '1.21.6': {gameVersion: '1.21.6', label: 'Minecraft 1.21.6', packFormat: 63, coreBase: ''},
+    '1.21.11': {gameVersion: '1.21.11', label: 'Minecraft 1.21.11', packFormat: 75, coreBase: '1.21.11/'},
+    '26.1+': {gameVersion: '26.1.2', label: 'Minecraft 26.1+ (26.1.2 runtime)', packFormat: 84, coreBase: '26.1.2/'}
+  };
+
+  function sourcesFor(version = '1.21.6') {
+    const profile = RUNTIME_PROFILES[version];
+    if (!profile) throw new Error(`unsupported Minecraft runtime: ${version}`);
+    return Object.assign({
+      'assets/minecraft/shaders/core/entity.fsh': `${profile.coreBase}assets/minecraft/shaders/core/entity.fsh`,
+      'assets/minecraft/shaders/core/entity.vsh': `${profile.coreBase}assets/minecraft/shaders/core/entity.vsh`
+    }, SHARED_SOURCES);
+  }
+
+  function profileFor(version = '1.21.6') {
+    const profile = RUNTIME_PROFILES[version];
+    if (!profile) throw new Error(`unsupported Minecraft runtime: ${version}`);
+    return Object.assign({}, profile);
+  }
+
+  async function loadRuntimeFiles(version = '1.21.6') {
+    const profile = profileFor(version);
+    const bundled = root.CemSBundledRuntime && root.CemSBundledRuntime[version];
+    if (!bundled) throw new Error(`CEM-S Studio is missing its bundled ${profile.label} runtime`);
+    return Object.assign({}, bundled, {'THIRD-PARTY-LICENSES/CEM-S-MIT.txt': LICENSE});
+  }
+
+  const SOURCES = sourcesFor('1.21.6');
+  const UPSTREAM_SOURCES = {
     'assets/minecraft/shaders/core/entity.fsh': '1.21.6/assets/minecraft/shaders/core/entity.fsh',
     'assets/minecraft/shaders/core/entity.vsh': '1.21.6/assets/minecraft/shaders/core/entity.vsh',
     'assets/minecraft/shaders/include/cem/frag_funcs.glsl': 'include/cem/frag_funcs.glsl',
@@ -35,21 +70,5 @@ SOFTWARE.
     'assets/minecraft/shaders/include/cem/vert_setup.glsl': 'include/cem/vert_setup.glsl'
   };
 
-  async function loadRuntimeFiles(fetcher) {
-    if (!fetcher && root.CemSBundledRuntime) {
-      return Object.assign({}, root.CemSBundledRuntime, {'THIRD-PARTY-LICENSES/CEM-S-MIT.txt': LICENSE});
-    }
-    const request = fetcher || (typeof fetch === 'function' ? fetch : null);
-    if (!request) throw new Error('CEM-S Studio needs network access to download the CEM-S 1.21.6 runtime');
-    const result = {};
-    for (const [destination, source] of Object.entries(SOURCES)) {
-      const response = await request(BASE + source);
-      if (!response.ok) throw new Error(`failed to download CEM-S runtime file: ${source}`);
-      result[destination] = await response.text();
-    }
-    result['THIRD-PARTY-LICENSES/CEM-S-MIT.txt'] = LICENSE;
-    return result;
-  }
-
-  return {REVISION, BASE, SOURCES, LICENSE, loadRuntimeFiles};
+  return {REVISION, BASE, SOURCES, UPSTREAM_SOURCES, RUNTIME_PROFILES, LICENSE, sourcesFor, profileFor, loadRuntimeFiles};
 }));

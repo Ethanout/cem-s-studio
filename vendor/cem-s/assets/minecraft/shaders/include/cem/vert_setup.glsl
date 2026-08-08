@@ -1,7 +1,7 @@
 /* CEM-Shader. DartCat25
 *  Vertex Setup (set in block if model is cem)
 *  #moj_import <cem/vert_setup.glsl>
-*/ 
+*/
 
 vec4 modelPos = ModelViewMat * vec4(Position, 1.0);
 modelPos.xy += ProjMat[3].xy / vec2(ProjMat[0][0], ProjMat[1][1]);
@@ -46,5 +46,15 @@ mat4 proj = ProjMat;
 proj[3].xy = vec2(0, 0);
 gl_Position = proj * cem_Pos;
 
+#ifdef PER_FACE_LIGHTING
+vec2 cem_face_light = minecraft_compute_light(Light0_Direction, Light1_Direction, Normal);
+vertexPerFaceColorBack = minecraft_mix_light_separate(-cem_face_light, vec4(1.0));
+vertexPerFaceColorFront = minecraft_mix_light_separate(cem_face_light, vec4(1.0));
+#else
 vertexColor = minecraft_mix_light(Light0_Direction, Light1_Direction, Normal, vec4(1.0));
+#endif
+#ifndef EMISSIVE
 cem_lightMapColor = texelFetch(Sampler2, UV2 / 16, 0);
+#else
+cem_lightMapColor = vec4(1.0);
+#endif

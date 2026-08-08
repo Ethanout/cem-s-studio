@@ -4,6 +4,7 @@
   root.CemSProject = api;
 }(typeof globalThis === 'undefined' ? this : globalThis, function () {
   const CURRENT_VERSION = 1;
+  const SUPPORTED_CEM_VERSIONS = {'1.21.6': 63, '1.21.11': 75, '26.1+': 84};
   const DETECTION_PRESETS = {
     pig: {channel: 'entity', pixel: [63, 0], color: [255, 0, 0, 255], face: {mode: 'vertex_id', count: 42, index: 3}, reverse: true, corner: 'default', size: 1, hideUnmatched: false},
     cold_pig: {channel: 'entity', pixel: [63, 0], color: [3, 0, 0, 255], face: {mode: 'vertex_id', count: 84, index: 3}, reverse: true, corner: 'default', size: 1, hideUnmatched: false},
@@ -47,6 +48,7 @@
     if (document.formatVersion !== CURRENT_VERSION) throw new Error(`unsupported cemst format version: ${document.formatVersion}`);
     if (!document.project || typeof document.project.name !== 'string' || !document.project.name.trim()) throw new Error('project.name is required');
     assertModelId(document.project.modelId);
+    if (!Object.prototype.hasOwnProperty.call(SUPPORTED_CEM_VERSIONS, document.project.cemVersion)) throw new Error(`unsupported Minecraft runtime: ${document.project.cemVersion}`);
     if (!document.project.detection || document.project.detection.mode !== 'texture_marker') throw new Error('only texture_marker detection is supported');
     const detection = document.project.detection;
     if (!Array.isArray(detection.pixel) || detection.pixel.length !== 2 || detection.pixel.some((value) => !Number.isInteger(value) || value < 0)) throw new Error('detection.pixel must be a non-negative ivec2');
@@ -79,6 +81,8 @@
     const inferredPreset = Object.prototype.hasOwnProperty.call(DETECTION_PRESETS, targetEntity) ? targetEntity : 'pig';
     const detection = normalizeDetection(options.detection || {preset: inferredPreset}, inferredPreset);
     const targetType = options.targetType || (detection.channel === 'armor' ? 'armor' : 'entity');
+    const cemVersion = options.cemVersion || '1.21.6';
+    if (!Object.prototype.hasOwnProperty.call(SUPPORTED_CEM_VERSIONS, cemVersion)) throw new Error(`unsupported Minecraft runtime: ${cemVersion}`);
     assertModelId(modelId);
     return {
       format: 'cemst',
@@ -86,7 +90,7 @@
       project: {
         name,
         modelId,
-        cemVersion: options.cemVersion || '1.21.6',
+        cemVersion,
         targetType,
         targetEntity,
         detection,
@@ -94,7 +98,7 @@
         resourcePack: {
           name: options.resourcePack?.name || options.packName || `${name} Pack`,
           description: options.resourcePack?.description || options.packDescription || `CEM-S Studio resource pack for ${name}`,
-          packFormat: options.resourcePack?.packFormat || options.packFormat || 63
+          packFormat: options.resourcePack?.packFormat || options.packFormat || SUPPORTED_CEM_VERSIONS[cemVersion]
         }
       },
       blockbench: options.blockbench || {meta: {model_format: 'cem_s_studio'}, outliner: []}
@@ -108,9 +112,10 @@
 
   function parseProject(content) {
     const document = typeof content === 'string' ? JSON.parse(content) : clone(content);
+    if (document?.project && !document.project.cemVersion) document.project.cemVersion = '1.21.6';
     if (document?.project?.detection) document.project.detection = normalizeDetection(document.project.detection, 'custom');
     return clone(validateProject(document));
   }
 
-  return {CURRENT_VERSION, DETECTION_PRESETS: clone(DETECTION_PRESETS), detectionForPreset, createProject, serializeProject, parseProject, validateProject};
+  return {CURRENT_VERSION, SUPPORTED_CEM_VERSIONS: clone(SUPPORTED_CEM_VERSIONS), DETECTION_PRESETS: clone(DETECTION_PRESETS), detectionForPreset, createProject, serializeProject, parseProject, validateProject};
 }));

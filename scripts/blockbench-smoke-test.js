@@ -45,7 +45,10 @@ async function main() {
   const client = await connect();
   const packPath = fs.mkdtempSync(path.join(os.tmpdir(), 'cem-s-studio-smoke-'));
   const newPackPath = path.join(packPath, 'new-pack');
-  const createdPackPath = path.join(newPackPath, 'smoke_pack');
+  const createdPackPaths = {
+    '1.21.11': path.join(newPackPath, 'smoke_1_21_11'),
+    '26.1+': path.join(newPackPath, 'smoke_26_1')
+  };
   fs.mkdirSync(newPackPath);
   try {
     const exceptions = [];
@@ -61,11 +64,15 @@ async function main() {
     const loadValue = load.result.value;
     if (!loadValue?.ok) throw new Error(`Plugin load failed: ${loadValue?.message || 'unknown error'}`);
     const bundleProbe = await client.call('Runtime.evaluate', {
-      expression: `(async () => { const files = await CemSRuntime.loadRuntimeFiles(); return {runtimeFileCount: Object.keys(globalThis.CemSBundledRuntime || {}).length, loadedFileCount: Object.keys(files).length, hasEntityShader: !!files['assets/minecraft/shaders/core/entity.fsh']}; })()`,
+      expression: `(async () => { const versions = ['1.21.6', '1.21.11', '26.1+']; const loaded = {}; for (const version of versions) { const files = await CemSRuntime.loadRuntimeFiles(version); loaded[version] = {fileCount: Object.keys(files).length, hasEntityShader: !!files['assets/minecraft/shaders/core/entity.fsh']}; } return {runtimeVersionCount: Object.keys(globalThis.CemSBundledRuntime || {}).length, loaded}; })()`,
       returnByValue: true,
       awaitPromise: true
     });
-    console.log(`Blockbench smoke: bundled runtime ${JSON.stringify(bundleProbe.result.value)}`);
+    const bundleState = bundleProbe.result.value;
+    if (bundleState?.runtimeVersionCount !== 3 || !['1.21.6', '1.21.11', '26.1+'].every(version => bundleState.loaded?.[version]?.hasEntityShader)) {
+      throw new Error(`Bundled runtime probe returned incomplete state: ${JSON.stringify(bundleState)}`);
+    }
+    console.log(`Blockbench smoke: bundled runtime ${JSON.stringify(bundleState)}`);
     console.log('Blockbench smoke: probing project and resource-pack workflow');
 
     let probe;
@@ -89,6 +96,10 @@ async function main() {
         const settingsDialog = Dialog.open;
         const settingsFields = Object.keys(settingsDialog.form?.form_config || {});
         settingsDialog.hide();
+        BarItems.cem_s_studio_advanced_detection.click();
+        const advancedSettingsDialog = Dialog.open;
+        const advancedSettingsFields = Object.keys(advancedSettingsDialog.form?.form_config || {});
+        advancedSettingsDialog.hide();
 
         globalThis.__cemSmokeStage = 'player_reference';
         BarItems.cem_s_studio_add_player_reference.click();
@@ -110,13 +121,22 @@ async function main() {
         Blockbench.pickDirectory = () => ${JSON.stringify(packPath)};
         await packDialog.onConfirm({mode: 'update'});
 
-        globalThis.__cemSmokeStage = 'new_pack';
-        Project.cem_studio.resourcePack.name = 'Smoke Pack';
-        BarItems.build_cem_s_resource_pack.click();
-        const newPackDialog = Dialog.open;
-        Blockbench.pickDirectory = () => ${JSON.stringify(newPackPath)};
-        await newPackDialog.onConfirm({mode: 'new'});
-        globalThis.__cemSmokeStage = 'new_pack_done';
+        const builtVersions = {};
+        for (const target of [
+          {version: '1.21.11', packFormat: 75, name: 'Smoke 1 21 11'},
+          {version: '26.1+', packFormat: 84, name: 'Smoke 26 1'}
+        ]) {
+          globalThis.__cemSmokeStage = 'new_pack_' + target.version;
+          Project.cem_studio.cemVersion = target.version;
+          Project.cem_studio.resourcePack.packFormat = target.packFormat;
+          Project.cem_studio.resourcePack.name = target.name;
+          BarItems.build_cem_s_resource_pack.click();
+          const newPackDialog = Dialog.open;
+          Blockbench.pickDirectory = () => ${JSON.stringify(newPackPath)};
+          await newPackDialog.onConfirm({mode: 'new'});
+          builtVersions[target.version] = {packFormat: Project.cem_studio.resourcePack.packFormat};
+        }
+        globalThis.__cemSmokeStage = 'new_packs_done';
         const newPackDialogState = Dialog.open ? {
           id: Dialog.open.id,
           title: Dialog.open.title,
@@ -131,6 +151,7 @@ async function main() {
           actions: {
             save: !!BarItems.save_cemst_project,
             settings: !!BarItems.cem_s_studio_project_settings,
+            advancedDetection: !!BarItems.cem_s_studio_advanced_detection,
             buildPack: !!BarItems.build_cem_s_resource_pack,
             addReference: !!BarItems.cem_s_studio_add_player_reference,
             importReference: !!BarItems.cem_s_studio_import_reference,
@@ -145,7 +166,9 @@ async function main() {
           cubeCountAfterOpen: Cube.all.length,
           referenceState,
           settingsFields,
+          advancedSettingsFields,
           buildModes,
+          builtVersions,
           newPackDialogState
         };
       })()`,
@@ -159,7 +182,7 @@ async function main() {
     if (probe.exceptionDetails) exceptions.push(probe.exceptionDetails.text);
     const result = probe.result.value;
     if (!result?.ok) throw new Error(result?.message || exceptions.join('\n') || 'Blockbench probe failed');
-    const required = [result.formatSelected, result.codecRegistered, result.actions.save, result.actions.settings, result.actions.buildPack, result.actions.addReference, result.actions.importReference, result.actions.registerReference, result.actions.bindReference, result.rawFormat === 'cemst', result.parsedFormat === 'cemst', result.formatVersion === 1, result.projectName === 'Smoke Pig', result.projectHasSettings, result.cubeCountAfterOpen === 7, result.referenceState?.guideCount === 6, result.referenceState?.allVisible, result.referenceState?.allExcludedFromExport, result.referenceState?.allTextured, result.referenceState?.textureSize?.[0] === 64, result.referenceState?.textureSize?.[1] === 64, result.settingsFields.includes('model_id'), result.settingsFields.includes('target_entity'), result.settingsFields.includes('render_target'), result.settingsFields.includes('detection_preset'), result.settingsFields.includes('face_count'), result.settingsFields.includes('face_number'), result.buildModes.includes('new'), result.buildModes.includes('update')];
+    const required = [result.formatSelected, result.codecRegistered, result.actions.save, result.actions.settings, result.actions.advancedDetection, result.actions.buildPack, result.actions.addReference, result.actions.importReference, result.actions.registerReference, result.actions.bindReference, result.rawFormat === 'cemst', result.parsedFormat === 'cemst', result.formatVersion === 1, result.projectName === 'Smoke Pig', result.projectHasSettings, result.cubeCountAfterOpen === 7, result.referenceState?.guideCount === 6, result.referenceState?.allVisible, result.referenceState?.allExcludedFromExport, result.referenceState?.allTextured, result.referenceState?.textureSize?.[0] === 64, result.referenceState?.textureSize?.[1] === 64, result.settingsFields.length === 7, result.settingsFields.includes('minecraft_version'), result.settingsFields.includes('model_id'), result.settingsFields.includes('target_entity'), result.settingsFields.includes('render_target'), result.settingsFields.includes('detection_preset'), result.advancedSettingsFields.includes('marker_x'), result.advancedSettingsFields.includes('face_count'), result.advancedSettingsFields.includes('face_number'), result.buildModes.includes('new'), result.buildModes.includes('update'), result.builtVersions?.['1.21.11']?.packFormat === 75, result.builtVersions?.['26.1+']?.packFormat === 84];
     if (required.some(value => !value)) throw new Error(`Blockbench probe returned incomplete state: ${JSON.stringify(result)}`);
     const expectedPackFiles = [
       'assets/minecraft/shaders/include/cem_user/models.glsl',
@@ -169,15 +192,18 @@ async function main() {
     for (const relative of expectedPackFiles) {
       if (!fs.existsSync(path.join(packPath, relative))) throw new Error(`Resource-pack build did not create ${relative}`);
     }
-    const expectedNewPackFiles = [
-      ...expectedPackFiles,
-      'pack.mcmeta',
-      'assets/minecraft/shaders/core/entity.fsh',
-      'assets/minecraft/shaders/core/entity.vsh',
-      'THIRD-PARTY-LICENSES/CEM-S-MIT.txt'
-    ];
-    for (const relative of expectedNewPackFiles) {
-      if (!fs.existsSync(path.join(createdPackPath, relative))) throw new Error(`New resource-pack build did not create ${relative}: ${JSON.stringify(result.newPackDialogState)}`);
+    for (const [version, createdPackPath] of Object.entries(createdPackPaths)) {
+      const expectedNewPackFiles = [...expectedPackFiles, 'pack.mcmeta', 'assets/minecraft/shaders/core/entity.fsh', 'assets/minecraft/shaders/core/entity.vsh', 'THIRD-PARTY-LICENSES/CEM-S-MIT.txt'];
+      for (const relative of expectedNewPackFiles) {
+        if (!fs.existsSync(path.join(createdPackPath, relative))) throw new Error(`${version} resource-pack build did not create ${relative}: ${JSON.stringify(result.newPackDialogState)}`);
+      }
+      const pack = JSON.parse(fs.readFileSync(path.join(createdPackPath, 'pack.mcmeta'), 'utf8'));
+      const expectedFormat = version === '1.21.11' ? 75 : 84;
+      if (pack.pack?.pack_format !== expectedFormat) throw new Error(`${version} resource pack has pack_format ${pack.pack?.pack_format}, expected ${expectedFormat}`);
+      if (pack.pack?.min_format !== expectedFormat || pack.pack?.max_format !== expectedFormat) throw new Error(`${version} resource pack does not declare the expected modern format range`);
+      const vertexShader = fs.readFileSync(path.join(createdPackPath, 'assets/minecraft/shaders/core/entity.vsh'), 'utf8');
+      if (!vertexShader.includes('#version 330')) throw new Error(`${version} resource pack does not contain the GLSL 330 entity shader`);
+      if (version === '26.1+' && !vertexShader.includes('sample_lightmap')) throw new Error('26.1+ resource pack does not use sample_lightmap');
     }
 
     const screenshot = await client.call('Page.captureScreenshot', {format: 'png'});

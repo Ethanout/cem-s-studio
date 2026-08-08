@@ -1,4 +1,4 @@
-#version 150
+#version 330
 
 #moj_import <minecraft:light.glsl>
 #moj_import <minecraft:fog.glsl>
@@ -10,14 +10,20 @@ uniform sampler2D Sampler0;
 
 in float sphericalVertexDistance;
 in float cylindricalVertexDistance;
+#ifdef PER_FACE_LIGHTING
+in vec4 vertexPerFaceColorBack;
+in vec4 vertexPerFaceColorFront;
+#define CEM_VERTEX_COLOR (gl_FrontFacing ? vertexPerFaceColorFront : vertexPerFaceColorBack)
+#else
 in vec4 vertexColor;
+#define CEM_VERTEX_COLOR vertexColor
+#endif
 in vec4 lightMapColor;
 in vec4 overlayColor;
 in vec2 texCoord0;
 
 out vec4 fragColor;
 
-#define CEM_VERTEX_COLOR vertexColor
 #moj_import <cem/frag_funcs.glsl>
 
 void main() {
@@ -28,26 +34,26 @@ void main() {
         discard;
     }
 #endif
+#ifdef PER_FACE_LIGHTING
+    color *= (gl_FrontFacing ? vertexPerFaceColorFront : vertexPerFaceColorBack) * ColorModulator;
+#else
     color *= vertexColor * ColorModulator;
+#endif
 
     if (cem != 0)
     {
         #moj_import <cem/frag_main_setup.glsl>
-
         switch (cem)
         {
             #moj_import <cem_user/models.glsl>
         }
-
         if (minT == MAX_DEPTH)
             discard;
-
         writeDepth(dir * minT);
     }
-    else
+    else if (round(color.a * 255) == 252)
     {
-        if (round(color.a * 255) == 252)
-            discard;
+        discard;
     }
 
 #ifndef NO_OVERLAY

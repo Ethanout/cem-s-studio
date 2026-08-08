@@ -8,6 +8,14 @@ test('emits a CEM-S ADD_BOX call for a cube', () => {
   assert.match(result.glsl, /ADD_BOX\(vec3\(0\.0, 0\.0, 0\.0\), vec3\(2\.0, 3\.0, 4\.0\)/);
   assert.match(result.glsl, /case 7:/);
   assert.equal(result.manifest.model, 'demo');
+  assert.equal(result.manifest.target, 'cem-s/1.21.6');
+});
+
+test('records the selected Minecraft runtime in the export manifest', () => {
+  const model = {name: 'modern', parts: []};
+  assert.equal(exportModel(model, 1, '1.21.11').manifest.target, 'cem-s/1.21.11');
+  assert.equal(exportModel(model, 1, '26.1+').manifest.target, 'cem-s/26.1+');
+  assert.throws(() => exportModel(model, 1, '1.22'), /unsupported Minecraft runtime/);
 });
 
 test('uses supplied Blockbench face UV rectangles', () => {

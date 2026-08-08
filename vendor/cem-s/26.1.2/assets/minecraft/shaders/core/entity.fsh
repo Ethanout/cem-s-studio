@@ -1,4 +1,4 @@
-#version 150
+#version 330
 
 #moj_import <minecraft:light.glsl>
 #moj_import <minecraft:fog.glsl>
@@ -7,17 +7,30 @@
 #moj_import <minecraft:globals.glsl>
 
 uniform sampler2D Sampler0;
+#ifdef DISSOLVE
+uniform sampler2D DissolveMaskSampler;
+#endif
 
 in float sphericalVertexDistance;
 in float cylindricalVertexDistance;
+#ifdef PER_FACE_LIGHTING
+in vec4 vertexPerFaceColorBack;
+in vec4 vertexPerFaceColorFront;
+#define CEM_VERTEX_COLOR (gl_FrontFacing ? vertexPerFaceColorFront : vertexPerFaceColorBack)
+#else
 in vec4 vertexColor;
+#define CEM_VERTEX_COLOR vertexColor
+#endif
+#ifndef EMISSIVE
 in vec4 lightMapColor;
+#endif
+#ifndef NO_OVERLAY
 in vec4 overlayColor;
+#endif
 in vec2 texCoord0;
 
 out vec4 fragColor;
 
-#define CEM_VERTEX_COLOR vertexColor
 #moj_import <cem/frag_funcs.glsl>
 
 void main() {
@@ -28,26 +41,36 @@ void main() {
         discard;
     }
 #endif
-    color *= vertexColor * ColorModulator;
+
+#ifdef PER_FACE_LIGHTING
+    vec4 faceVertexColor = gl_FrontFacing ? vertexPerFaceColorFront : vertexPerFaceColorBack;
+#else
+    vec4 faceVertexColor = vertexColor;
+#endif
+
+#ifdef DISSOLVE
+    if (faceVertexColor.a < texture(DissolveMaskSampler, texCoord0).a) {
+        discard;
+    }
+    faceVertexColor.a = 1.0;
+#endif
+
+    color *= faceVertexColor * ColorModulator;
 
     if (cem != 0)
     {
         #moj_import <cem/frag_main_setup.glsl>
-
         switch (cem)
         {
             #moj_import <cem_user/models.glsl>
         }
-
         if (minT == MAX_DEPTH)
             discard;
-
         writeDepth(dir * minT);
     }
-    else
+    else if (round(color.a * 255) == 252)
     {
-        if (round(color.a * 255) == 252)
-            discard;
+        discard;
     }
 
 #ifndef NO_OVERLAY

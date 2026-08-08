@@ -1,13 +1,14 @@
 (function () {
   const {exportModel} = CemSExporter;
   const {toCemModel, isReferenceCube} = CemSBlockbenchAdapter;
-  const {createProject, parseProject, serializeProject, detectionForPreset} = CemSProject;
+  const {SUPPORTED_CEM_VERSIONS, createProject, parseProject, serializeProject, detectionForPreset} = CemSProject;
   const {REFERENCE_PREFIX, REFERENCE_CUBE_PREFIX, anchorsFor, guidesFor, isReferenceGroup} = CemSReferenceRigs;
   const {slugify, buildPackFiles, mergePackFiles} = CemSPackBuilder;
   const {loadRuntimeFiles} = CemSRuntime;
   let exportAction;
   let exportDialog;
   let settingsAction;
+  let advancedSettingsAction;
   let settingsDialog;
   let buildAction;
   let buildDialog;
@@ -40,58 +41,65 @@
   function setSettings(result) {
     const current = getSettings();
     const presetName = result.detection_preset;
+    const currentDetection = current.detection;
+    const value = (name, fallback) => result[name] === undefined || result[name] === '' ? fallback : result[name];
     const detection = presetName === 'custom' ? {
       preset: 'custom',
-      channel: result.render_target,
+      channel: value('render_target', current.targetType),
       mode: 'texture_marker',
-      pixel: [Number(result.marker_x), Number(result.marker_y)],
-      color: [result.marker_r, result.marker_g, result.marker_b, result.marker_a].map(Number),
-      face: {mode: 'vertex_id', count: Number(result.face_count), index: Number(result.face_number)},
-      reverse: !!result.reverse,
-      corner: result.corner_yx ? 'yx' : 'default',
-      size: Number(result.cem_size),
-      hideUnmatched: !!result.hide_unmatched
+      pixel: [Number(value('marker_x', currentDetection.pixel[0])), Number(value('marker_y', currentDetection.pixel[1]))],
+      color: [value('marker_r', currentDetection.color[0]), value('marker_g', currentDetection.color[1]), value('marker_b', currentDetection.color[2]), value('marker_a', currentDetection.color[3])].map(Number),
+      face: {mode: 'vertex_id', count: Number(value('face_count', currentDetection.face.count)), index: Number(value('face_number', currentDetection.face.index))},
+      reverse: result.reverse === undefined ? currentDetection.reverse : !!result.reverse,
+      corner: result.corner_yx === undefined ? currentDetection.corner : (result.corner_yx ? 'yx' : 'default'),
+      size: Number(value('cem_size', currentDetection.size)),
+      hideUnmatched: result.hide_unmatched === undefined ? currentDetection.hideUnmatched : !!result.hide_unmatched
     } : detectionForPreset(presetName);
     const next = createProject({
       ...current,
-      name: result.project_name,
-      modelId: Number(result.model_id),
-      targetEntity: presetName === 'custom' ? result.target_entity : presetName,
-      targetType: presetName === 'custom' ? result.render_target : detection.channel,
+      name: value('project_name', current.name),
+      modelId: Number(value('model_id', current.modelId)),
+      cemVersion: value('minecraft_version', current.cemVersion),
+      targetEntity: presetName === 'custom' ? value('target_entity', current.targetEntity) : presetName,
+      targetType: presetName === 'custom' ? value('render_target', current.targetType) : detection.channel,
       detection,
-      resourcePack: {name: result.pack_name, description: result.pack_description, packFormat: current.resourcePack.packFormat}
+      resourcePack: {name: value('pack_name', current.resourcePack.name), description: value('pack_description', current.resourcePack.description), packFormat: SUPPORTED_CEM_VERSIONS[value('minecraft_version', current.cemVersion)]}
     }).project;
     Project.cem_studio = next;
     Project.name = next.name;
     Project.saved = false;
   }
 
-  function showProjectSettings() {
+  function showProjectSettings(advanced = false) {
     const settings = getSettings();
+    const form = {
+      project_name: {label: 'Project name', type: 'text', value: settings.name},
+      minecraft_version: {label: 'Minecraft version', description: 'Selects the bundled CEM-S core shaders and resource-pack format.', type: 'select', options: {'1.21.6': '1.21.6', '1.21.11': '1.21.11', '26.1+': '26.1+ (26.1.2 runtime)'}, value: settings.cemVersion},
+      model_id: {label: 'Model ID', description: 'Keep this ID unique in the target resource pack.', type: 'number', value: settings.modelId, min: 0, step: 1},
+      target_entity: {label: 'Target entity', description: 'For example pig, sheep, or your custom entity identifier.', type: 'text', value: settings.targetEntity},
+      render_target: {label: 'Render target', description: 'Use Armor / Equipment for elytra and armor attachments.', type: 'select', options: {entity: 'Entity / Mob', armor: 'Armor / Equipment'}, value: settings.targetType},
+      detection_preset: {label: 'Entity preset', description: 'Presets fill the CEM-S detection values automatically.', type: 'select', options: {pig: 'Pig', cold_pig: 'Cold Pig', arrow: 'Arrow', sheep: 'Sheep', elytra: 'Elytra / Wings', custom: 'Custom'}, value: settings.detection.preset},
+      pack_name: {label: 'Resource pack name', type: 'text', value: settings.resourcePack.name}
+    };
+    if (advanced) Object.assign(form, {
+      marker_x: {label: 'Marker pixel X', type: 'number', value: settings.detection.pixel[0], min: 0, step: 1},
+      marker_y: {label: 'Marker pixel Y', type: 'number', value: settings.detection.pixel[1], min: 0, step: 1},
+      marker_r: {label: 'Marker red', type: 'number', value: settings.detection.color[0], min: 0, max: 255, step: 1},
+      marker_g: {label: 'Marker green', type: 'number', value: settings.detection.color[1], min: 0, max: 255, step: 1},
+      marker_b: {label: 'Marker blue', type: 'number', value: settings.detection.color[2], min: 0, max: 255, step: 1},
+      marker_a: {label: 'Marker alpha', type: 'number', value: settings.detection.color[3], min: 0, max: 255, step: 1},
+      face_count: {label: 'Faces per entity', description: 'Usually vanilla model cube count multiplied by 6.', type: 'number', value: settings.detection.face.count, min: 1, step: 1},
+      face_number: {label: 'Anchor face', description: 'Zero-based face index used as the CEM-S anchor.', type: 'number', value: settings.detection.face.index, min: 0, step: 1},
+      reverse: {label: 'Reverse model axes', type: 'checkbox', value: settings.detection.reverse},
+      corner_yx: {label: 'Transpose anchor corners', type: 'checkbox', value: settings.detection.corner === 'yx'},
+      cem_size: {label: 'CEM area size', type: 'number', value: settings.detection.size, min: 0.01, step: 0.1},
+      hide_unmatched: {label: 'Hide unmatched vanilla faces', type: 'checkbox', value: settings.detection.hideUnmatched},
+      pack_description: {label: 'Resource pack description', type: 'text', value: settings.resourcePack.description}
+    });
     settingsDialog = new Dialog({
       id: 'cem_s_studio_settings',
-      title: 'CEM-S Studio Project Settings',
-      form: {
-        project_name: {label: 'Project name', type: 'text', value: settings.name},
-        model_id: {label: 'Model ID', description: 'This ID must match the generated detection rule.', type: 'number', value: settings.modelId, min: 0, step: 1},
-        target_entity: {label: 'Target entity', description: 'Minecraft entity identifier, for example pig.', type: 'text', value: settings.targetEntity},
-        render_target: {label: 'Render target', description: 'Entity for mobs and attachments; Armor for equipment and elytra.', type: 'select', options: {entity: 'Entity / Mob', armor: 'Armor / Equipment'}, value: settings.targetType},
-        detection_preset: {label: 'Detection preset', description: 'Presets configure the CEM-S anchor face automatically.', type: 'select', options: {pig: 'Pig', cold_pig: 'Cold Pig', arrow: 'Arrow', sheep: 'Sheep', elytra: 'Elytra / Wings', custom: 'Custom'}, value: settings.detection.preset},
-        marker_x: {label: 'Marker pixel X', type: 'number', value: settings.detection.pixel[0], min: 0, step: 1},
-        marker_y: {label: 'Marker pixel Y', type: 'number', value: settings.detection.pixel[1], min: 0, step: 1},
-        marker_r: {label: 'Marker red', type: 'number', value: settings.detection.color[0], min: 0, max: 255, step: 1},
-        marker_g: {label: 'Marker green', type: 'number', value: settings.detection.color[1], min: 0, max: 255, step: 1},
-        marker_b: {label: 'Marker blue', type: 'number', value: settings.detection.color[2], min: 0, max: 255, step: 1},
-        marker_a: {label: 'Marker alpha', type: 'number', value: settings.detection.color[3], min: 0, max: 255, step: 1},
-        face_count: {label: 'Faces per entity', description: 'Custom preset: usually the vanilla model cube count multiplied by 6.', type: 'number', value: settings.detection.face.count, min: 1, step: 1},
-        face_number: {label: 'Anchor face', description: 'Custom preset: zero-based face index used as the CEM-S anchor.', type: 'number', value: settings.detection.face.index, min: 0, step: 1},
-        reverse: {label: 'Reverse model axes', type: 'checkbox', value: settings.detection.reverse},
-        corner_yx: {label: 'Transpose anchor corners', type: 'checkbox', value: settings.detection.corner === 'yx'},
-        cem_size: {label: 'CEM area size', type: 'number', value: settings.detection.size, min: 0.01, step: 0.1},
-        hide_unmatched: {label: 'Hide unmatched vanilla faces', type: 'checkbox', value: settings.detection.hideUnmatched},
-        pack_name: {label: 'Resource pack name', type: 'text', value: settings.resourcePack.name},
-        pack_description: {label: 'Resource pack description', type: 'text', value: settings.resourcePack.description}
-      },
+      title: advanced ? 'CEM-S Advanced Detection Settings' : 'CEM-S Studio Project Setup',
+      form,
       onConfirm(result) {
         settingsDialog.hide();
         try {
@@ -396,14 +404,14 @@
     const settings = getSettings();
     exportDialog = new Dialog({
       id: 'cem_s_studio_export',
-      title: 'Export CEM-S 1.21.6 Model',
+      title: `Export CEM-S ${settings.cemVersion} Model`,
       form: {model_id: {label: 'Model ID', type: 'number', value: settings.modelId, min: 0, step: 1}},
       onConfirm(result) {
         exportDialog.hide();
         try {
           const document = currentDocument();
-      const exported = exportModel(toCemModel(document.project.name, cubes, {reference: document.project.reference}), Number(result.model_id));
-          Blockbench.export({resource_id: 'cem_s_studio_glsl', type: 'CEM-S 1.21.6 model', extensions: ['glsl'], name: document.project.name, content: exported.glsl}, path => Blockbench.showQuickMessage(`CEM-S Studio: exported ${path || document.project.name}.`));
+          const exported = exportModel(toCemModel(document.project.name, cubes, {reference: document.project.reference}), Number(result.model_id), document.project.cemVersion);
+          Blockbench.export({resource_id: 'cem_s_studio_glsl', type: `CEM-S ${document.project.cemVersion} model`, extensions: ['glsl'], name: document.project.name, content: exported.glsl}, path => Blockbench.showQuickMessage(`CEM-S Studio: exported ${path || document.project.name}.`));
         } catch (error) {
           Blockbench.showMessageBox({title: 'CEM-S Studio export failed', message: error.message});
         }
@@ -443,7 +451,7 @@
     try {
       const document = currentDocument();
       const model = toCemModel(document.project.name, Cube.all || [], {reference: document.project.reference});
-      const exported = exportModel(model, document.project.modelId);
+      const exported = exportModel(model, document.project.modelId, document.project.cemVersion);
       const selected = Blockbench.pickDirectory({title: mode === 'new' ? 'Choose where to create the resource pack' : 'Choose existing CEM-S resource pack folder', resource_id: 'cem_s_studio_pack'});
       if (!selected) return;
       const path = require('path');
@@ -452,7 +460,7 @@
       if (mode === 'new' && fs.existsSync(root) && fs.readdirSync(root).length) {
         throw new Error(`The folder "${root}" is not empty. Choose another location or use Update an existing CEM-S pack.`);
       }
-      const runtimeFiles = mode === 'new' ? await loadRuntimeFiles() : {};
+      const runtimeFiles = mode === 'new' ? await loadRuntimeFiles(document.project.cemVersion) : {};
       const generated = buildPackFiles(document, exported.glsl, {runtimeFiles});
       const aggregatorFiles = ['assets/minecraft/shaders/include/cem_user/models.glsl', 'assets/minecraft/shaders/include/cem_user/detection.glsl', 'pack.mcmeta'];
       const files = mode === 'new' ? generated : mergePackFiles(readExistingFiles(root, aggregatorFiles, fs), generated, document);
@@ -500,7 +508,7 @@
     });
     projectFormat = new ModelFormat('cem_s_studio', {
       name: 'CEM-S Studio',
-      description: 'Blockbench project format for CEM-S shader models.',
+      description: 'Blockbench project format for CEM-S shader models on Minecraft 1.21.6, 1.21.11, and 26.1+.',
       category: 'minecraft',
       target: 'Minecraft',
       icon: 'extension',
@@ -520,15 +528,17 @@
     });
     projectCodec.format = projectFormat;
     saveAction = new Action('save_cemst_project', {name: 'Save CEM-S Studio Project', icon: 'save', category: 'file', condition: () => Format === projectFormat && !!Project, click: () => projectCodec.export()});
-    settingsAction = new Action('cem_s_studio_project_settings', {name: 'CEM-S Studio Project Settings', icon: 'settings', category: 'tools', condition: () => Format === projectFormat && !!Project, click: showProjectSettings});
+    settingsAction = new Action('cem_s_studio_project_settings', {name: 'CEM-S Studio Project Setup', icon: 'settings', category: 'tools', condition: () => Format === projectFormat && !!Project, click: () => showProjectSettings(false)});
+    advancedSettingsAction = new Action('cem_s_studio_advanced_detection', {name: 'Advanced Detection Settings', icon: 'tune', category: 'tools', condition: () => Format === projectFormat && !!Project, click: () => showProjectSettings(true)});
     buildAction = new Action('build_cem_s_resource_pack', {name: 'Build CEM-S Resource Pack', icon: 'folder_zip', category: 'file', condition: () => Format === projectFormat && !!Project, click: showBuildDialog});
-    exportAction = new Action('export_cem_s_studio', {name: 'Export CEM-S 1.21.6 Model', icon: 'save', category: 'file.export', condition: () => Format === projectFormat && !!Project, click: exportCurrentProject});
+    exportAction = new Action('export_cem_s_studio', {name: 'Export CEM-S Model', icon: 'save', category: 'file.export', condition: () => Format === projectFormat && !!Project, click: exportCurrentProject});
     addReferenceAction = new Action('cem_s_studio_add_player_reference', {name: 'Add Player Reference Model', icon: 'accessibility', category: 'tools', condition: () => Format === projectFormat && !!Project, click: addPlayerReference});
     importReferenceAction = new Action('cem_s_studio_import_reference', {name: 'Import Vanilla Reference Model (.bbmodel)', icon: 'folder_open', category: 'tools', condition: () => Format === projectFormat && !!Project, click: importReferenceModel});
     registerReferenceAction = new Action('cem_s_studio_register_reference', {name: 'Register Selected Group as Reference Model', icon: 'bookmark', category: 'tools', condition: () => Format === projectFormat && !!Project, click: registerSelectedReference});
     bindReferenceAction = new Action('cem_s_studio_bind_reference', {name: 'Bind Selected Group to Reference Anchor', icon: 'link', category: 'tools', condition: () => Format === projectFormat && !!Project, click: showBindReferenceDialog});
     MenuBar.addAction(saveAction, 'file');
     MenuBar.addAction(settingsAction, 'tools');
+    MenuBar.addAction(advancedSettingsAction, 'tools');
     MenuBar.addAction(buildAction, 'file.export');
     MenuBar.addAction(exportAction, 'file.export');
     MenuBar.addAction(addReferenceAction, 'tools');
@@ -540,9 +550,9 @@
   Plugin.register('cem_s_studio', {
     title: 'CEM-S Studio',
     author: 'CEM-S Studio contributors',
-    description: 'A Blockbench project format and resource-pack builder for CEM-S 1.21.6.',
+    description: 'A Blockbench project format and resource-pack builder for CEM-S on Minecraft 1.21.6, 1.21.11, and 26.1+.',
     icon: 'extension',
-    version: '0.3.1',
+    version: '0.4.0',
     min_version: '4.12.0',
     variant: 'desktop',
     onload() {
@@ -551,7 +561,7 @@
     },
     onunload() {
       uninstallTextureGeneratorGuard();
-      [saveAction, settingsAction, buildAction, exportAction, addReferenceAction, importReferenceAction, registerReferenceAction, bindReferenceAction].forEach(action => action && action.delete());
+      [saveAction, settingsAction, advancedSettingsAction, buildAction, exportAction, addReferenceAction, importReferenceAction, registerReferenceAction, bindReferenceAction].forEach(action => action && action.delete());
       [exportDialog, settingsDialog, buildDialog].forEach(dialog => dialog && dialog.delete());
       if (projectCodec) projectCodec.delete();
       if (projectFormat) projectFormat.delete();

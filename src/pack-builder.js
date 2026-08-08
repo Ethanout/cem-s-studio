@@ -46,8 +46,13 @@
     const id = slugify(project.name);
     const modelPath = `cem_user/models/${project.targetType}/${id}.glsl`;
     const detectionPath = `cem_user/detection/${project.targetType}/${id}.glsl`;
+    const pack = {pack_format: project.resourcePack.packFormat, description: project.resourcePack.description};
+    if (project.resourcePack.packFormat >= 75) {
+      pack.min_format = project.resourcePack.packFormat;
+      pack.max_format = project.resourcePack.packFormat;
+    }
     const generated = {
-      'pack.mcmeta': json({pack: {pack_format: project.resourcePack.packFormat, description: project.resourcePack.description}}),
+      'pack.mcmeta': json({pack}),
       'assets/minecraft/shaders/include/cem_user/models.glsl': managedImport(project.modelId, modelPath),
       [`assets/minecraft/shaders/include/${modelPath}`]: modelGlsl.endsWith('\n') ? modelGlsl : `${modelGlsl}\n`,
       'assets/minecraft/shaders/include/cem_user/detection.glsl': managedImport(project.modelId, detectionPath),

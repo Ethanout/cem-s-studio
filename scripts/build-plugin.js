@@ -3,11 +3,14 @@ const path = require('node:path');
 
 const root = path.resolve(__dirname, '..');
 const sources = ['src/cem-exporter.js', 'src/blockbench-adapter.js', 'src/cemst.js', 'src/reference-rigs.js', 'src/pack-builder.js'];
-const {SOURCES} = require(path.join(root, 'src', 'cem-runtime.js'));
-const runtimeFiles = Object.fromEntries(Object.keys(SOURCES).map((destination) => {
-  const source = path.join(root, 'vendor', 'cem-s', destination);
-  if (!fs.existsSync(source)) throw new Error(`Missing bundled CEM-S runtime file: ${destination}`);
-  return [destination, fs.readFileSync(source, 'utf8')];
+const {RUNTIME_PROFILES, sourcesFor} = require(path.join(root, 'src', 'cem-runtime.js'));
+const runtimeFiles = Object.fromEntries(Object.keys(RUNTIME_PROFILES).map(version => {
+  const files = Object.fromEntries(Object.entries(sourcesFor(version)).map(([destination, vendorPath]) => {
+    const source = path.join(root, 'vendor', 'cem-s', vendorPath);
+    if (!fs.existsSync(source)) throw new Error(`Missing bundled CEM-S ${version} runtime file: ${vendorPath}`);
+    return [destination, fs.readFileSync(source, 'utf8')];
+  }));
+  return [version, files];
 }));
 const runtimeBundle = `(function (root) { root.CemSBundledRuntime = Object.freeze(${JSON.stringify(runtimeFiles)}); }(typeof globalThis === 'undefined' ? this : globalThis));`;
 const tailSources = ['src/cem-runtime.js', 'src/plugin-entry.js'];

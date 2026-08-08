@@ -1,6 +1,6 @@
 # CEM-S Studio
 
-CEM-S Studio 是面向 CEM-S 1.21.6 的 Blockbench 插件。建模、层级、旋转和 UV 都使用 Blockbench 原生界面；项目保存为 `.cemst`，用户不需要创建或编辑 GLSL 文件。
+CEM-S Studio 是面向 Minecraft 1.21.6、1.21.11 和 26.1+ 的 CEM-S Blockbench 插件。建模、层级、旋转和 UV 都使用 Blockbench 原生界面；项目保存为 `.cemst`，用户不需要创建或编辑 GLSL 文件。
 
 ## 安装
 
@@ -12,7 +12,7 @@ CEM-S Studio 是面向 CEM-S 1.21.6 的 Blockbench 插件。建模、层级、�
 
 1. 在 Blockbench 新建页面选择 **CEM-S Studio** 项目类型。
 2. 像普通 Blockbench 项目一样创建 Group、Cube、纹理和 UV。
-3. 通过 **工具 -> CEM-S Studio Project Settings** 设置模型 ID、目标实体、检测 preset、纹理标记像素和资源包信息。Pig、Cold Pig、Arrow、Sheep 会自动配置 CEM-S 所需的锚点面；其他实体选择 Custom 后填写 vanilla 模型的面数与锚点面编号。
+3. 通过 **工具 -> CEM-S Studio Project Setup** 选择 Minecraft 版本、模型 ID、目标实体、预设和资源包名称。Pig、Cold Pig、Arrow、Sheep 会自动配置 CEM-S 所需的锚点面；只有自定义实体需要再打开 **工具 -> Advanced Detection Settings** 填写纹理标记、面数和锚点面编号。
 4. 如果要制作挂件、盔甲或喷气背包，先导入/创建参考模型：
    - 常用玩家模型可用 **工具 -> Add Player Reference Model**。它自带独立的 64×64 玩家预览材质和标准皮肤 UV。
    - 其他任意生物可先使用原版/实体模型导入插件导出 `.bbmodel`，再使用 **工具 -> Import Vanilla Reference Model (.bbmodel)** 导入；模型会加入当前工程，不会替换当前项目，并自动登记方块为参考 guide。
@@ -25,7 +25,7 @@ CEM-S Studio 是面向 CEM-S 1.21.6 的 Blockbench 插件。建模、层级、�
 
 第一次写入某个文件夹时，Blockbench 5 会显示 **Plugin Permission** 系统对话框。确认允许 CEM-S Studio 访问刚才选择的资源包文件夹即可。
 
-新建资源包不依赖网络。插件已经内置固定版本的 CEM-S 1.21.6 runtime，生成后的文件夹可直接放入 Minecraft 的 `resourcepacks` 目录。
+新建资源包不依赖网络。插件已经内置 1.21.6、1.21.11 和 26.1+ 三套 runtime；其中 26.1+ 当前基于 Minecraft 26.1.2 的 shader 与资源包格式。生成后的文件夹可直接放入 Minecraft 的 `resourcepacks` 目录。
 
 预设已经包含 CEM-S 使用的纹理标记位置和颜色，通常不需要修改。Custom 只在你要适配其他实体或自定义纹理标记时使用：把设置中的标记像素/颜色画到该实体的纹理上即可，插件会负责生成检测 GLSL，不需要你编写 GLSL。
 
@@ -35,6 +35,7 @@ CEM-S Studio 是面向 CEM-S 1.21.6 的 Blockbench 插件。建模、层级、�
 
 ## 当前支持范围
 
+- Minecraft 1.21.6、1.21.11 和 26.1+。
 - Cube 与逐面 UV。
 - 单轴和多轴旋转。
 - 旋转父 Group 和多层 Group 变换。

@@ -1,7 +1,7 @@
 /* CEM-Shader. DartCat25
 *  Fragment functional (set right before main function)
 *  #moj_import <cem/frag_funcs.glsl>
-*/ 
+*/
 
 //Able ins and necessary uniforms
 in vec4 cem_pos1, cem_pos2, cem_pos3, cem_pos4;
@@ -15,7 +15,7 @@ flat in vec4 cem_light;
 #define MAX_DEPTH 1000000
 
 #define ADD_SQUARE(p1, p2, p3, uv) { \
-color = sSquare(-center, dirTBN, p1 * modelSize, p2 * modelSize, p3 * modelSize, vertexColor, color, minT, uv);\
+color = sSquare(-center, dirTBN, p1 * modelSize, p2 * modelSize, p3 * modelSize, CEM_VERTEX_COLOR, color, minT, uv);\
 }
 
 #define ADD_BOX(pos, size, dSide, uSide, nSide, eSide, sSide, wSide) { \
