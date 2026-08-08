@@ -11,4 +11,6 @@ test('lays out the player reference upright in Blockbench Y-up coordinates', () 
   assert.equal(guides.head.from[1], guides.body.to[1]);
   assert.equal(anchors.head.origin[1], guides.head.from[1]);
   assert.equal(anchors.left_arm.origin[1], 22);
+  assert.deepEqual(guides.head.uv, [0, 0]);
+  assert.deepEqual(guides.body.uv, [16, 16]);
 });

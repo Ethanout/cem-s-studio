@@ -90,6 +90,18 @@ async function main() {
         const settingsFields = Object.keys(settingsDialog.form?.form_config || {});
         settingsDialog.hide();
 
+        globalThis.__cemSmokeStage = 'player_reference';
+        BarItems.cem_s_studio_add_player_reference.click();
+        const referenceGuides = Cube.all.filter(cube => cube.name.startsWith('[CEM-S Reference]'));
+        const referenceTexture = Texture.all.find(texture => texture.name === 'CEM-S Player Reference');
+        const referenceState = {
+          guideCount: referenceGuides.length,
+          allVisible: referenceGuides.every(cube => cube.visibility),
+          allExcludedFromExport: referenceGuides.every(cube => cube.export === false),
+          allTextured: referenceGuides.every(cube => Object.values(cube.faces).every(face => face.texture === referenceTexture?.uuid)),
+          textureSize: referenceTexture && [referenceTexture.uv_width, referenceTexture.uv_height]
+        };
+
         globalThis.__cemSmokeStage = 'update_pack';
         BarItems.build_cem_s_resource_pack.click();
         const packDialog = Dialog.open;
@@ -131,6 +143,7 @@ async function main() {
           projectName: parsed.project.name,
           projectHasSettings: !!Project.cem_studio,
           cubeCountAfterOpen: Cube.all.length,
+          referenceState,
           settingsFields,
           buildModes,
           newPackDialogState
@@ -146,7 +159,7 @@ async function main() {
     if (probe.exceptionDetails) exceptions.push(probe.exceptionDetails.text);
     const result = probe.result.value;
     if (!result?.ok) throw new Error(result?.message || exceptions.join('\n') || 'Blockbench probe failed');
-    const required = [result.formatSelected, result.codecRegistered, result.actions.save, result.actions.settings, result.actions.buildPack, result.actions.addReference, result.actions.importReference, result.actions.registerReference, result.actions.bindReference, result.rawFormat === 'cemst', result.parsedFormat === 'cemst', result.formatVersion === 1, result.projectName === 'Smoke Pig', result.projectHasSettings, result.cubeCountAfterOpen === 1, result.settingsFields.includes('model_id'), result.settingsFields.includes('target_entity'), result.settingsFields.includes('render_target'), result.settingsFields.includes('detection_preset'), result.settingsFields.includes('face_count'), result.settingsFields.includes('face_number'), result.buildModes.includes('new'), result.buildModes.includes('update')];
+    const required = [result.formatSelected, result.codecRegistered, result.actions.save, result.actions.settings, result.actions.buildPack, result.actions.addReference, result.actions.importReference, result.actions.registerReference, result.actions.bindReference, result.rawFormat === 'cemst', result.parsedFormat === 'cemst', result.formatVersion === 1, result.projectName === 'Smoke Pig', result.projectHasSettings, result.cubeCountAfterOpen === 7, result.referenceState?.guideCount === 6, result.referenceState?.allVisible, result.referenceState?.allExcludedFromExport, result.referenceState?.allTextured, result.referenceState?.textureSize?.[0] === 64, result.referenceState?.textureSize?.[1] === 64, result.settingsFields.includes('model_id'), result.settingsFields.includes('target_entity'), result.settingsFields.includes('render_target'), result.settingsFields.includes('detection_preset'), result.settingsFields.includes('face_count'), result.settingsFields.includes('face_number'), result.buildModes.includes('new'), result.buildModes.includes('update')];
     if (required.some(value => !value)) throw new Error(`Blockbench probe returned incomplete state: ${JSON.stringify(result)}`);
     const expectedPackFiles = [
       'assets/minecraft/shaders/include/cem_user/models.glsl',

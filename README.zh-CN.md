@@ -14,7 +14,7 @@ CEM-S Studio 是面向 CEM-S 1.21.6 的 Blockbench 插件。建模、层级、�
 2. 像普通 Blockbench 项目一样创建 Group、Cube、纹理和 UV。
 3. 通过 **工具 -> CEM-S Studio Project Settings** 设置模型 ID、目标实体、检测 preset、纹理标记像素和资源包信息。Pig、Cold Pig、Arrow、Sheep 会自动配置 CEM-S 所需的锚点面；其他实体选择 Custom 后填写 vanilla 模型的面数与锚点面编号。
 4. 如果要制作挂件、盔甲或喷气背包，先导入/创建参考模型：
-   - 常用玩家模型可用 **工具 -> Add Player Reference Model**。
+   - 常用玩家模型可用 **工具 -> Add Player Reference Model**。它自带独立的 64×64 玩家预览材质和标准皮肤 UV。
    - 其他任意生物可先使用原版/实体模型导入插件导出 `.bbmodel`，再使用 **工具 -> Import Vanilla Reference Model (.bbmodel)** 导入；模型会加入当前工程，不会替换当前项目，并自动登记方块为参考 guide。
    - 也可以直接在 Blockbench 中导入模型，选中根 Group 后使用 **工具 -> Register Selected Group as Reference Model**。
    - 将自定义部件放进自己的 Group，选中该 Group，使用 **工具 -> Bind Selected Group to Reference Anchor** 选择 `body`、`head`、`left_arm` 等锚点。之后移动、旋转或统一缩放锚点，挂件会跟随，参考方块不会导出。
@@ -30,6 +30,8 @@ CEM-S Studio 是面向 CEM-S 1.21.6 的 Blockbench 插件。建模、层级、�
 预设已经包含 CEM-S 使用的纹理标记位置和颜色，通常不需要修改。Custom 只在你要适配其他实体或自定义纹理标记时使用：把设置中的标记像素/颜色画到该实体的纹理上即可，插件会负责生成检测 GLSL，不需要你编写 GLSL。
 
 `Render target` 可以选择 `Entity / Mob` 或 `Armor / Equipment`。鞘翅、胸甲上的喷气背包等使用后者；普通生物模型和生物身上的挂件使用前者。参考模型只是 Blockbench 中的定位骨架，不会写入生成的 GLSL。
+
+参考 guide 不会参与 Blockbench 的 **Create Texture** 模板生成，因此创建挂件材质时只会考虑用户自己的可见模型。
 
 ## 当前支持范围
 

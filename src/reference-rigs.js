@@ -20,12 +20,12 @@
   };
 
   const PLAYER_GUIDES = {
-    body: {from: [-4, 12, -2], to: [4, 24, 2], origin: [0, 24, 0]},
-    head: {from: [-4, 24, -4], to: [4, 32, 4], origin: [0, 24, 0]},
-    left_arm: {from: [4, 12, -2], to: [8, 24, 2], origin: [5, 22, 0]},
-    right_arm: {from: [-8, 12, -2], to: [-4, 24, 2], origin: [-5, 22, 0]},
-    left_leg: {from: [0, 0, -2], to: [4, 12, 2], origin: [1.9, 12, 0]},
-    right_leg: {from: [-4, 0, -2], to: [0, 12, 2], origin: [-1.9, 12, 0]}
+    body: {from: [-4, 12, -2], to: [4, 24, 2], origin: [0, 24, 0], uv: [16, 16]},
+    head: {from: [-4, 24, -4], to: [4, 32, 4], origin: [0, 24, 0], uv: [0, 0]},
+    left_arm: {from: [4, 12, -2], to: [8, 24, 2], origin: [5, 22, 0], uv: [32, 48]},
+    right_arm: {from: [-8, 12, -2], to: [-4, 24, 2], origin: [-5, 22, 0], uv: [40, 16]},
+    left_leg: {from: [0, 0, -2], to: [4, 12, 2], origin: [1.9, 12, 0], uv: [16, 48]},
+    right_leg: {from: [-4, 0, -2], to: [0, 12, 2], origin: [-1.9, 12, 0], uv: [0, 16]}
   };
 
   function clone(value) {

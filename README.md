@@ -10,7 +10,7 @@
 2. In Blockbench, choose **File -> Plugins -> Load Plugin from File** and select `cem_s_studio.js`.
 3. Create a new project using the **CEM-S Studio** format.
 4. Use **Tools -> CEM-S Studio Project Settings** to set the project name, model ID, target entity, texture marker pixel, and resource-pack metadata.
-   For attachments, use **Tools -> Add Player Reference Model** or **Tools -> Import Vanilla Reference Model (.bbmodel)**. The latter accepts a model exported by a vanilla/entity-model importer, adds it to the current project without replacing it, and registers its cubes as guides. You can also register any already imported root Group with **Register Selected Group as Reference Model**.
+   For attachments, use **Tools -> Add Player Reference Model** or **Tools -> Import Vanilla Reference Model (.bbmodel)**. The player reference includes an embedded 64x64 preview skin and standard skin UVs. The latter accepts a model exported by a vanilla/entity-model importer, adds it to the current project without replacing it, and registers its cubes as guides. You can also register any already imported root Group with **Register Selected Group as Reference Model**.
 5. Save the project as a `.cemst` file with **File -> Save CEM-S Studio Project**.
 6. Choose **File -> Build CEM-S Resource Pack**:
    - **Create a new resource pack** asks for a parent directory, then creates a named pack folder containing `pack.mcmeta`, the pinned CEM-S 1.21.6 runtime, model files, detection files, and the `.cemst` metadata copy. It refuses to overwrite a non-empty pack folder.
@@ -29,6 +29,7 @@ The generated folder can be copied directly into Minecraft's `resourcepacks` dir
 - Presets include the CEM-S texture marker position and color. For Custom, put the configured marker pixel/color in the entity texture; the plugin generates the detection GLSL for you.
 - Add a Player Reference model or register any imported mob Group, then bind attachment Groups to named anchors. Reference guide cubes are excluded automatically from export.
 - Import arbitrary vanilla/community `.bbmodel` files as reference skeletons; no per-mob hardcoded model list is required.
+- Reference guides stay visible in the editor but are excluded from Blockbench Create Texture templates and model export.
 - Choose an Entity/Mob or Armor/Equipment render target for body attachments, armor, elytra, and similar equipment layers.
 - Non-uniform scale, meshes, disabled/rotated faces, locators, and animation export are rejected with diagnostics.
 

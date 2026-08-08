@@ -18,6 +18,9 @@ test('registers the CEM-S Studio project format and resource-pack workflow', () 
   assert.match(source, /Import Vanilla Reference Model \(\.bbmodel\)/);
   assert.match(source, /Register Selected Group as Reference Model/);
   assert.match(source, /Bind Selected Group to Reference Anchor/);
+  assert.match(source, /CEM-S Player Reference/);
+  assert.match(source, /withoutReferenceGuides/);
+  assert.match(source, /export: false/);
 });
 
 test('keeps the standalone CEM-S export action inside CEM-S Studio projects', () => {

@@ -341,12 +341,12 @@ return {toCemModel, isReferenceCube};
   };
 
   const PLAYER_GUIDES = {
-    body: {from: [-4, 12, -2], to: [4, 24, 2], origin: [0, 24, 0]},
-    head: {from: [-4, 24, -4], to: [4, 32, 4], origin: [0, 24, 0]},
-    left_arm: {from: [4, 12, -2], to: [8, 24, 2], origin: [5, 22, 0]},
-    right_arm: {from: [-8, 12, -2], to: [-4, 24, 2], origin: [-5, 22, 0]},
-    left_leg: {from: [0, 0, -2], to: [4, 12, 2], origin: [1.9, 12, 0]},
-    right_leg: {from: [-4, 0, -2], to: [0, 12, 2], origin: [-1.9, 12, 0]}
+    body: {from: [-4, 12, -2], to: [4, 24, 2], origin: [0, 24, 0], uv: [16, 16]},
+    head: {from: [-4, 24, -4], to: [4, 32, 4], origin: [0, 24, 0], uv: [0, 0]},
+    left_arm: {from: [4, 12, -2], to: [8, 24, 2], origin: [5, 22, 0], uv: [32, 48]},
+    right_arm: {from: [-8, 12, -2], to: [-4, 24, 2], origin: [-5, 22, 0], uv: [40, 16]},
+    left_leg: {from: [0, 0, -2], to: [4, 12, 2], origin: [1.9, 12, 0], uv: [16, 48]},
+    right_leg: {from: [-4, 0, -2], to: [0, 12, 2], origin: [-1.9, 12, 0], uv: [0, 16]}
   };
 
   function clone(value) {
@@ -538,6 +538,8 @@ SOFTWARE.
   let importReferenceAction;
   let registerReferenceAction;
   let bindReferenceAction;
+  let originalGenerateTemplate;
+  let originalGenerateColorMapTemplate;
 
   function defaultSettings() {
     return createProject({name: Project?.name || 'CEM-S Model'}).project;
@@ -632,6 +634,82 @@ SOFTWARE.
     return (Outliner.selected || []).find(item => item && item.type === 'group') || null;
   }
 
+  function createPlayerReferenceTexture() {
+    const existing = (Texture.all || []).find(texture => texture.name === 'CEM-S Player Reference');
+    if (existing) return existing;
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 64;
+    const context = canvas.getContext('2d');
+    context.clearRect(0, 0, 64, 64);
+    const paintFace = (x, y, width, height) => {
+      context.fillStyle = '#fafafa';
+      context.fillRect(x, y, width, height);
+      context.strokeStyle = '#cfd3d7';
+      context.lineWidth = 1;
+      context.strokeRect(x + 0.5, y + 0.5, width - 1, height - 1);
+    };
+    const paintBox = (u, v, width, height, depth) => {
+      paintFace(u + depth, v, width, depth);
+      paintFace(u + depth + width, v, width, depth);
+      paintFace(u, v + depth, depth, height);
+      paintFace(u + depth, v + depth, width, height);
+      paintFace(u + depth + width, v + depth, depth, height);
+      paintFace(u + depth * 2 + width, v + depth, width, height);
+    };
+    paintBox(0, 0, 8, 8, 8);
+    paintBox(16, 16, 8, 12, 4);
+    paintBox(40, 16, 4, 12, 4);
+    paintBox(0, 16, 4, 12, 4);
+    paintBox(32, 48, 4, 12, 4);
+    paintBox(16, 48, 4, 12, 4);
+    context.fillStyle = '#bfc4c9';
+    context.fillRect(10, 10, 1, 1);
+    context.fillRect(14, 10, 1, 1);
+    context.fillRect(10, 12, 1, 1);
+    context.fillRect(11, 13, 3, 1);
+    context.fillRect(14, 12, 1, 1);
+    return new Texture({name: 'CEM-S Player Reference', mode: 'bitmap', uv_width: 64, uv_height: 64})
+      .fromDataURL(canvas.toDataURL('image/png'))
+      .add(false);
+  }
+
+  function withoutReferenceGuides(callback) {
+    if (Format !== projectFormat) return callback();
+    const guides = (Cube.all || []).filter(cube => isReferenceCube(cube, getSettings().reference));
+    const visibility = guides.map(cube => cube.visibility);
+    guides.forEach(cube => { cube.visibility = false; });
+    const restore = () => guides.forEach((cube, index) => { cube.visibility = visibility[index]; });
+    try {
+      const result = callback();
+      if (result && typeof result.then === 'function') return result.finally(restore);
+      restore();
+      return result;
+    } catch (error) {
+      restore();
+      throw error;
+    }
+  }
+
+  function installTextureGeneratorGuard() {
+    if (!globalThis.TextureGenerator || originalGenerateTemplate) return;
+    originalGenerateTemplate = TextureGenerator.generateTemplate;
+    originalGenerateColorMapTemplate = TextureGenerator.generateColorMapTemplate;
+    TextureGenerator.generateTemplate = function (...args) {
+      return withoutReferenceGuides(() => originalGenerateTemplate.apply(this, args));
+    };
+    TextureGenerator.generateColorMapTemplate = function (...args) {
+      return withoutReferenceGuides(() => originalGenerateColorMapTemplate.apply(this, args));
+    };
+  }
+
+  function uninstallTextureGeneratorGuard() {
+    if (!globalThis.TextureGenerator || !originalGenerateTemplate) return;
+    TextureGenerator.generateTemplate = originalGenerateTemplate;
+    TextureGenerator.generateColorMapTemplate = originalGenerateColorMapTemplate;
+    originalGenerateTemplate = null;
+    originalGenerateColorMapTemplate = null;
+  }
+
   function addPlayerReference() {
     const settings = getSettings();
     const existing = settings.reference?.root && findGroupByReference(settings.reference.root);
@@ -642,6 +720,7 @@ SOFTWARE.
     }
     const anchors = anchorsFor('player');
     const guides = guidesFor('player');
+    const referenceTexture = createPlayerReferenceTexture();
     Undo.initEdit({outliner: true, elements: []});
     const root = new Group({name: `${REFERENCE_PREFIX} / Player`, origin: [0, 0, 0]}).init();
     const anchorNames = {};
@@ -656,8 +735,12 @@ SOFTWARE.
           from: guide.from.slice(),
           to: guide.to.slice(),
           origin: guide.origin.slice(),
+          box_uv: true,
+          uv_offset: guide.uv.slice(),
+          export: false,
           locked: true
         }).addTo(group).init();
+        cube.applyTexture?.(referenceTexture, true);
         created.push(cube);
       }
     }
@@ -689,6 +772,7 @@ SOFTWARE.
       Blockbench.showMessageBox({title: 'CEM-S Studio reference', message: 'The selected reference Group does not contain any cubes.'});
       return;
     }
+    guides.forEach(cube => { cube.export = false; });
     const anchors = {};
     for (const group of groups) {
       const base = slugify(group.name || 'anchor');
@@ -742,6 +826,7 @@ SOFTWARE.
             to: Array.isArray(element.to) ? element.to.slice() : [0, 0, 0],
             origin: Array.isArray(element.origin) ? element.origin.slice() : undefined,
             rotation: Array.isArray(element.rotation) ? element.rotation.slice() : [0, 0, 0],
+            export: false,
             locked: true
           }).addTo(parent).init();
           createdGuides.push(cube);
@@ -943,6 +1028,7 @@ SOFTWARE.
       box_uv: false,
       optional_box_uv: true,
       single_texture: true,
+      per_texture_uv_size: true,
       bone_rig: true,
       rotate_cubes: true,
       centered_grid: true,
@@ -975,11 +1061,15 @@ SOFTWARE.
     author: 'CEM-S Studio contributors',
     description: 'A Blockbench project format and resource-pack builder for CEM-S 1.21.6.',
     icon: 'extension',
-    version: '0.3.0',
+    version: '0.3.1',
     min_version: '4.12.0',
     variant: 'desktop',
-    onload() { installProjectFormat(); },
+    onload() {
+      installProjectFormat();
+      installTextureGeneratorGuard();
+    },
     onunload() {
+      uninstallTextureGeneratorGuard();
       [saveAction, settingsAction, buildAction, exportAction, addReferenceAction, importReferenceAction, registerReferenceAction, bindReferenceAction].forEach(action => action && action.delete());
       [exportDialog, settingsDialog, buildDialog].forEach(dialog => dialog && dialog.delete());
       if (projectCodec) projectCodec.delete();
