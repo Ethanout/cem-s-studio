@@ -106,12 +106,13 @@ test('round-trips a custom reference rig and attachment bindings', () => {
     targetType: 'armor',
     targetEntity: 'elytra',
     detection: {preset: 'elytra'},
-    reference: {rig: 'custom', root: 'root-uuid', anchors: {body: 'body-uuid'}, bindings: {'pack-uuid': 'body'}, guides: ['body-cube-uuid']}
+    reference: {rig: 'custom', root: 'root-uuid', anchors: {body: 'body-uuid'}, bindings: {'pack-uuid': 'body'}, transforms: {'pack-uuid': {position: [0, 2, 1], rotation: [0, 15, 0], scale: [1, 1, 1]}}, guides: ['body-cube-uuid']}
   });
   const parsed = parseProject(serializeProject(project));
   assert.equal(parsed.project.targetType, 'armor');
   assert.equal(parsed.project.reference.rig, 'custom');
   assert.deepEqual(parsed.project.reference.bindings, {'pack-uuid': 'body'});
+  assert.deepEqual(parsed.project.reference.transforms['pack-uuid'], {position: [0, 2, 1], rotation: [0, 15, 0], scale: [1, 1, 1]});
   assert.deepEqual(parsed.project.reference.guides, ['body-cube-uuid']);
 });
 

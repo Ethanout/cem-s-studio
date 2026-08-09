@@ -116,7 +116,7 @@
     if (!['entity', 'armor'].includes(document.project.targetType)) throw new Error('project.targetType must be entity or armor');
     if (document.project.targetType !== detection.channel) throw new Error('project.targetType must match detection.channel');
     if (document.project.texturePath !== null && document.project.texturePath !== undefined && (typeof document.project.texturePath !== 'string' || !document.project.texturePath.startsWith('assets/') || !document.project.texturePath.endsWith('.png'))) throw new Error('project.texturePath must be an assets PNG path or null');
-    const reference = document.project.reference || {rig: 'none', root: null, anchors: {}, bindings: {}, guides: []};
+    const reference = document.project.reference || {rig: 'none', root: null, anchors: {}, bindings: {}, transforms: {}, guides: []};
     if (!['none', 'player', 'pig', 'elytra', 'arrow', 'armor_stand', 'custom'].includes(reference.rig)) throw new Error('project.reference.rig is unsupported');
     if (reference.root !== null && typeof reference.root !== 'string') throw new Error('project.reference.root must be a string or null');
     if (!reference.anchors || typeof reference.anchors !== 'object' || Array.isArray(reference.anchors)) throw new Error('project.reference.anchors must be an object');
@@ -124,8 +124,16 @@
     for (const [element, anchor] of Object.entries(reference.bindings || {})) {
       if (!element || typeof anchor !== 'string' || !Object.prototype.hasOwnProperty.call(reference.anchors, anchor)) throw new Error(`project.reference.bindings contains an unknown anchor: ${anchor}`);
     }
+    if (reference.transforms !== undefined && (!reference.transforms || typeof reference.transforms !== 'object' || Array.isArray(reference.transforms))) throw new Error('project.reference.transforms must be an object');
+    for (const [element, transform] of Object.entries(reference.transforms || {})) {
+      if (!Object.prototype.hasOwnProperty.call(reference.bindings || {}, element) || !transform || typeof transform !== 'object') throw new Error(`project.reference.transforms contains an unknown binding: ${element}`);
+      for (const property of ['position', 'rotation', 'scale']) {
+        if (!Array.isArray(transform[property]) || transform[property].length !== 3 || transform[property].some(value => !Number.isFinite(value))) throw new Error(`project.reference.transforms.${element}.${property} must be a finite vec3`);
+      }
+      if (transform.scale.some(value => value === 0)) throw new Error(`project.reference.transforms.${element}.scale cannot contain zero`);
+    }
     if (reference.guides !== undefined && (!Array.isArray(reference.guides) || reference.guides.some(value => typeof value !== 'string'))) throw new Error('project.reference.guides must be an array of UUIDs');
-    document.project.reference = {rig: reference.rig, root: reference.root || null, anchors: clone(reference.anchors), bindings: clone(reference.bindings || {}), guides: clone(reference.guides || [])};
+    document.project.reference = {rig: reference.rig, root: reference.root || null, anchors: clone(reference.anchors), bindings: clone(reference.bindings || {}), transforms: clone(reference.transforms || {}), guides: clone(reference.guides || [])};
     return document;
   }
 
@@ -152,7 +160,7 @@
         targetEntity,
         texturePath,
         detection,
-        reference: options.reference ? clone(options.reference) : {rig: 'none', root: null, anchors: {}, bindings: {}, guides: []},
+        reference: options.reference ? clone(options.reference) : {rig: 'none', root: null, anchors: {}, bindings: {}, transforms: {}, guides: []},
         resourcePack: {
           name: options.resourcePack?.name || options.packName || `${name} Pack`,
           description: options.resourcePack?.description || options.packDescription || `CEM-S Studio resource pack for ${name}`,

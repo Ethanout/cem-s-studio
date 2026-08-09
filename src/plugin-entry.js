@@ -74,7 +74,8 @@
     const {settings} = state;
     const entityName = profileFor(settings.targetEntity, settings.cemVersion)?.name || settings.targetEntity || '未选择';
     const referenceLabel = state.hasReference ? `${state.anchorCount} 个锚点` : '未添加';
-    const bindingLabel = state.bindingCount ? `${state.bindingCount} 个已绑定` : '暂无绑定';
+    const transformCount = Object.keys(settings.reference?.transforms || {}).length;
+    const bindingLabel = state.bindingCount ? `${state.bindingCount} 个已绑定 · ${transformCount} 个偏移快照` : '暂无绑定';
     const textureLabel = state.texture.count ? `${state.texture.count} 张用户纹理${state.texture.hasBaseTexture ? '' : '（缺少基础纹理）'}` : '未指定用户纹理';
     const next = !state.hasReference ? '先添加参考模型' : !state.modelCount ? '创建一个 Cube 或 Mesh' : !state.bindingCount ? '把模型拖入参考锚点' : state.texture.issue || '可以创建资源包';
     const setText = (selector, value) => { const node = studioPanel.node.querySelector(selector); if (node) node.textContent = value; };
@@ -131,7 +132,7 @@
         return;
       }
       root?.remove?.();
-      Project.cem_studio = Object.assign({}, settings, {reference: {rig: 'none', root: null, anchors: {}, bindings: {}, guides: []}});
+      Project.cem_studio = Object.assign({}, settings, {reference: {rig: 'none', root: null, anchors: {}, bindings: {}, transforms: {}, guides: []}});
     }
     setSettings({entity_profile: profileId, minecraft_version: settings.cemVersion});
     if (profile.referenceRig !== 'none' && !getSettings().reference?.root) addReferenceRig(profile.referenceRig);
@@ -285,15 +286,27 @@
     if (!root) return;
     const anchorByGroup = new Map(Object.entries(reference.anchors).map(([name, id]) => [id, name]));
     const bindings = {};
+    const transforms = {};
     const candidates = [...(Group.all || []), ...(Cube.all || []), ...(globalThis.Mesh?.all || [])];
     for (const element of candidates) {
       if (element === root || isReferenceGroup(element) || isReferenceCube(element, reference)) continue;
       const parent = element.parent;
       const anchor = parent && (anchorByGroup.get(parent.uuid) || anchorByGroup.get(parent.name));
-      if (anchor) bindings[element.uuid || element.name] = anchor;
+      if (anchor) {
+        const key = element.uuid || element.name;
+        bindings[key] = anchor;
+        const elementOrigin = Array.isArray(element.origin) ? element.origin : [0, 0, 0];
+        const anchorOrigin = Array.isArray(parent.origin) ? parent.origin : [0, 0, 0];
+        const elementScale = Array.isArray(element.scale) ? element.scale : [1, 1, 1];
+        transforms[key] = {
+          position: elementOrigin.map((value, index) => Number(value) - Number(anchorOrigin[index] || 0)),
+          rotation: (Array.isArray(element.rotation) ? element.rotation : [0, 0, 0]).map(Number),
+          scale: elementScale.map(Number)
+        };
+      }
     }
-    if (JSON.stringify(bindings) !== JSON.stringify(reference.bindings || {})) {
-      Project.cem_studio = Object.assign({}, settings, {reference: Object.assign({}, reference, {bindings})});
+    if (JSON.stringify(bindings) !== JSON.stringify(reference.bindings || {}) || JSON.stringify(transforms) !== JSON.stringify(reference.transforms || {})) {
+      Project.cem_studio = Object.assign({}, settings, {reference: Object.assign({}, reference, {bindings, transforms})});
       Project.saved = false;
     }
   }
@@ -449,7 +462,7 @@
         created.push(cube);
       }
     }
-    Project.cem_studio = Object.assign({}, settings, {reference: {rig, root: root.uuid || root.name, anchors: anchorNames, bindings: {}, guides: created.map(cube => cube.uuid).filter(Boolean)}});
+    Project.cem_studio = Object.assign({}, settings, {reference: {rig, root: root.uuid || root.name, anchors: anchorNames, bindings: {}, transforms: {}, guides: created.map(cube => cube.uuid).filter(Boolean)}});
     Project.saved = false;
     refreshStudioPanel();
     Undo.finishEdit(`Add CEM-S ${rig} Reference`, {outliner: true, elements: created});
@@ -504,6 +517,7 @@
         root: root.uuid || root.name,
         anchors,
         bindings: {},
+        transforms: {},
         guides: guides.map(cube => cube.uuid).filter(Boolean)
       }
     });
@@ -570,7 +584,7 @@
         }
         const settings = getSettings();
         Project.cem_studio = Object.assign({}, settings, {
-          reference: {rig: 'custom', root: root.uuid || root.name, anchors, bindings: {}, guides: createdGuides.map(cube => cube.uuid).filter(Boolean)}
+          reference: {rig: 'custom', root: root.uuid || root.name, anchors, bindings: {}, transforms: {}, guides: createdGuides.map(cube => cube.uuid).filter(Boolean)}
         });
         Project.saved = false;
         root.select?.();

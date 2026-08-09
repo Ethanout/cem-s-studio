@@ -39,6 +39,8 @@ test('registers the CEM-S Studio project format and resource-pack workflow', () 
   assert.match(source, /data-cem-entity="search"/);
   assert.match(source, /data-cem-entity="category"/);
   assert.match(source, /searchProfiles/);
+  assert.match(source, /reference\.transforms/);
+  assert.match(source, /偏移快照/);
   assert.match(source, /detectionForPreset\(presetName, version\)/);
   assert.match(source, /texture_path/);
   assert.match(source, /Target texture path/);
