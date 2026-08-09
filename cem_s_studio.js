@@ -500,7 +500,8 @@ function renderSettingsForCube(cube) {
   const hex = typeof tint === 'string' && /^#[0-9a-f]{8}$/i.test(tint) ? tint.slice(1).match(/../g).map(value => parseInt(value, 16) / 255) : null;
   const normalizedTint = hex || (Array.isArray(tint) && tint.length === 4 ? tint.map(Number) : null);
   const hasTint = normalizedTint && normalizedTint.every(value => Number.isFinite(value));
-  if (!emissive && perFaceLighting !== false && !hasTint) return null;
+  const tinted = hasTint && normalizedTint.some((value, index) => value !== 1);
+  if (!emissive && perFaceLighting !== false && !tinted) return null;
   return {emissive: !!emissive, perFaceLighting: perFaceLighting !== false, tint: hasTint ? normalizedTint : [1, 1, 1, 1]};
 }
 
@@ -554,6 +555,12 @@ return {toCemModel, toCemModels, bindingForCube, isReferenceCube};
     };
   }
   const CUSTOM_DETECTION = singleDetection('entity', [63, 0], [0, 0, 1, 255], {mode: 'vertex_id', count: 1, index: 0}, {corner: 'yx'});
+  function expertProfile(name, category, keywords, referenceRig = 'none', textureSize = [64, 64]) {
+    return {
+      name: `${name} (expert detection)`, category, keywords, targetType: 'entity', referenceRig,
+      textureSize, expertDetection: true, detection: CUSTOM_DETECTION
+    };
+  }
   const PROFILES = {
     armor_stand: {
       name: 'Armor Stand', category: 'humanoid', keywords: ['armor stand', '盔甲架'], targetType: 'entity', referenceRig: 'armor_stand', textureSize: [64, 64], texturePath: 'assets/minecraft/textures/entity/armorstand/wood.png', versions: ['1.21.6'],
@@ -596,7 +603,19 @@ return {toCemModel, toCemModels, bindingForCube, isReferenceCube};
     custom: {
       name: 'Custom entity', category: 'custom', keywords: ['custom', '自定义'], targetType: 'entity', referenceRig: 'none', textureSize: [64, 64], expertDetection: true,
       detection: CUSTOM_DETECTION
-    }
+    },
+    cow: expertProfile('Cow', 'quadruped', ['cow', '牛'], 'pig', [64, 32]),
+    chicken: expertProfile('Chicken', 'quadruped', ['chicken', '鸡'], 'pig', [64, 32]),
+    wolf: expertProfile('Wolf', 'quadruped', ['wolf', '狼'], 'pig', [64, 32]),
+    cat: expertProfile('Cat', 'quadruped', ['cat', '猫'], 'pig', [64, 32]),
+    horse: expertProfile('Horse', 'quadruped', ['horse', '马'], 'pig', [64, 32]),
+    zombie: expertProfile('Zombie', 'humanoid', ['zombie', '僵尸'], 'player', [64, 64]),
+    skeleton: expertProfile('Skeleton', 'humanoid', ['skeleton', '骷髅'], 'player', [64, 32]),
+    villager: expertProfile('Villager', 'humanoid', ['villager', '村民'], 'player', [64, 64]),
+    boat: expertProfile('Boat', 'vehicle', ['boat', '船'], 'none', [64, 32]),
+    minecart: expertProfile('Minecart', 'vehicle', ['minecart', '矿车'], 'none', [64, 32]),
+    snowball: expertProfile('Snowball', 'projectile', ['snowball', '雪球'], 'arrow', [16, 16]),
+    fireball: expertProfile('Fireball', 'projectile', ['fireball', '火球'], 'arrow', [16, 16])
   };
 
   function clone(value) {
@@ -631,7 +650,7 @@ return {toCemModel, toCemModels, bindingForCube, isReferenceCube};
   }
 
   function categoryOptionsFor(version = '1.21.6') {
-    const labels = {humanoid: 'Humanoid / 人形', quadruped: 'Quadruped / 四足', projectile: 'Projectile / 投射物', equipment: 'Equipment / 装备', custom: 'Custom / 自定义'};
+    const labels = {humanoid: 'Humanoid / 人形', quadruped: 'Quadruped / 四足', projectile: 'Projectile / 投射物', equipment: 'Equipment / 装备', vehicle: 'Vehicle / 载具', custom: 'Custom / 自定义'};
     const categories = new Set(profilesFor(version).map(profile => profile.category || 'custom'));
     return Object.fromEntries([...categories].sort().map(category => [category, labels[category] || category]));
   }
@@ -774,6 +793,7 @@ return {toCemModel, toCemModels, bindingForCube, isReferenceCube};
     if (typeof detection.hideUnmatched !== 'boolean') throw new Error('detection.hideUnmatched must be boolean');
     if (!['entity', 'armor'].includes(document.project.targetType)) throw new Error('project.targetType must be entity or armor');
     if (document.project.targetType !== detection.channel) throw new Error('project.targetType must match detection.channel');
+    if (document.project.texturePath !== null && document.project.texturePath !== undefined && (typeof document.project.texturePath !== 'string' || !document.project.texturePath.startsWith('assets/') || !document.project.texturePath.endsWith('.png'))) throw new Error('project.texturePath must be an assets PNG path or null');
     const reference = document.project.reference || {rig: 'none', root: null, anchors: {}, bindings: {}, guides: []};
     if (!['none', 'player', 'pig', 'elytra', 'arrow', 'armor_stand', 'custom'].includes(reference.rig)) throw new Error('project.reference.rig is unsupported');
     if (reference.root !== null && typeof reference.root !== 'string') throw new Error('project.reference.root must be a string or null');
@@ -796,6 +816,8 @@ return {toCemModel, toCemModels, bindingForCube, isReferenceCube};
     const inferredPreset = Object.prototype.hasOwnProperty.call(DETECTION_PRESETS, targetEntity) ? targetEntity : 'pig';
     const detection = normalizeDetection(options.detection || {preset: inferredPreset}, inferredPreset, cemVersion);
     const targetType = options.targetType || (detection.channel === 'armor' ? 'armor' : 'entity');
+    const texturePath = options.texturePath || null;
+    if (texturePath !== null && (typeof texturePath !== 'string' || !texturePath.startsWith('assets/') || !texturePath.endsWith('.png'))) throw new Error('project.texturePath must be an assets PNG path or null');
     assertModelId(modelId);
     return {
       format: 'cemst',
@@ -806,6 +828,7 @@ return {toCemModel, toCemModels, bindingForCube, isReferenceCube};
         cemVersion,
         targetType,
         targetEntity,
+        texturePath,
         detection,
         reference: options.reference ? clone(options.reference) : {rig: 'none', root: null, anchors: {}, bindings: {}, guides: []},
         resourcePack: {
@@ -1181,7 +1204,7 @@ SOFTWARE.
       const expected = profile.textureSize || [];
       const hasBaseTexture = textures.some(texture => texture.width === expected[0] && texture.height === expected[1]);
       let issue = null;
-      if (textures.length && !profile.texturePath) issue = '当前实体使用动态纹理，需在专家模式指定资源包纹理路径';
+      if (textures.length && !(settings.texturePath || profile.texturePath)) issue = '当前实体使用动态纹理，需在高级设置指定资源包纹理路径';
       else if (textures.length && !hasBaseTexture) issue = `需要 ${expected[0]}×${expected[1]} 基础纹理`;
       return {count: textures.length, hasBaseTexture, issue, expected};
     } catch (error) {
@@ -1350,6 +1373,7 @@ SOFTWARE.
       targetEntity: presetName,
       targetType: presetName === 'custom' ? value('render_target', current.targetType) : profile.targetType,
       detection,
+      texturePath: value('texture_path', current.texturePath || null),
       resourcePack: {name: value('pack_name', current.resourcePack.name), description: value('pack_description', current.resourcePack.description), packFormat: SUPPORTED_CEM_VERSIONS[version]}
     }).project;
     Project.cem_studio = next;
@@ -1382,6 +1406,7 @@ SOFTWARE.
       corner_yx: {label: 'Transpose anchor corners', type: 'checkbox', value: primaryBranch.corner === 'yx'},
       cem_size: {label: 'CEM area size', type: 'number', value: primaryBranch.size, min: 0.01, step: 0.1},
       hide_unmatched: {label: 'Hide unmatched vanilla faces', type: 'checkbox', value: settings.detection.hideUnmatched},
+      texture_path: {label: 'Target texture path', description: 'For dynamic or expert entities, e.g. assets/minecraft/textures/entity/custom.png.', type: 'text', value: settings.texturePath || ''},
       pack_description: {label: 'Resource pack description', type: 'text', value: settings.resourcePack.description}
     });
     settingsDialog = new Dialog({
@@ -1824,7 +1849,8 @@ SOFTWARE.
       let textureFile = null;
       if (referencedTextures.length) {
         const profile = profileFor(document.project.targetEntity, document.project.cemVersion);
-        if (!profile.texturePath) throw new Error(`${profile.name} uses a dynamic or custom Minecraft texture. Multi-texture pack export needs an explicit target texture path, which is not available for this entity profile.`);
+        const texturePath = document.project.texturePath || profile.texturePath;
+        if (!texturePath) throw new Error(`${profile.name} uses a dynamic or custom Minecraft texture. Set Target texture path in Advanced Settings before building.`);
         const expected = profile.textureSize || [];
         const primaryTexture = referencedTextures.find(texture => texture.width === expected[0] && texture.height === expected[1]);
         if (!primaryTexture) throw new Error(`${profile.name} needs one referenced ${expected[0]}x${expected[1]} base entity texture before its additional Blockbench textures can be packed.`);
@@ -1832,7 +1858,7 @@ SOFTWARE.
           primaryTexture,
           marker: {pixel: document.project.detection.pixel, color: document.project.detection.color}
         });
-        textureFile = {path: profile.texturePath, content: textureAtlas.png, baseSize: expected.slice()};
+        textureFile = {path: texturePath, content: textureAtlas.png, baseSize: expected.slice()};
       }
       const entries = toCemModels(document.project.name, elements, {reference: document.project.reference, branches: document.project.detection.branches, textureAtlas});
       const exported = entries.length === 1

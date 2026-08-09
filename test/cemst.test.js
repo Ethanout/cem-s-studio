@@ -16,6 +16,13 @@ test('creates a versioned CEM-S Studio project with usable defaults', () => {
   assert.equal(project.project.detection.branches[0].anchor, 'head');
 });
 
+test('persists an explicit target texture path for dynamic entities', () => {
+  const project = createProject({name: 'Dynamic', targetEntity: 'player', texturePath: 'assets/minecraft/textures/entity/custom/player.png'});
+  assert.equal(project.project.texturePath, 'assets/minecraft/textures/entity/custom/player.png');
+  assert.equal(parseProject(serializeProject(project)).project.texturePath, 'assets/minecraft/textures/entity/custom/player.png');
+  assert.throws(() => createProject({texturePath: 'textures/invalid.png'}), /project.texturePath/);
+});
+
 test('serializes and parses a CEM-S Studio project without losing Blockbench data', () => {
   const input = createProject({name: 'Demo', modelId: 2, blockbench: {meta: {model_format: 'cem_s_studio'}, outliner: []}});
   const output = parseProject(serializeProject(input));

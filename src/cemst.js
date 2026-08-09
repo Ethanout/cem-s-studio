@@ -115,6 +115,7 @@
     if (typeof detection.hideUnmatched !== 'boolean') throw new Error('detection.hideUnmatched must be boolean');
     if (!['entity', 'armor'].includes(document.project.targetType)) throw new Error('project.targetType must be entity or armor');
     if (document.project.targetType !== detection.channel) throw new Error('project.targetType must match detection.channel');
+    if (document.project.texturePath !== null && document.project.texturePath !== undefined && (typeof document.project.texturePath !== 'string' || !document.project.texturePath.startsWith('assets/') || !document.project.texturePath.endsWith('.png'))) throw new Error('project.texturePath must be an assets PNG path or null');
     const reference = document.project.reference || {rig: 'none', root: null, anchors: {}, bindings: {}, guides: []};
     if (!['none', 'player', 'pig', 'elytra', 'arrow', 'armor_stand', 'custom'].includes(reference.rig)) throw new Error('project.reference.rig is unsupported');
     if (reference.root !== null && typeof reference.root !== 'string') throw new Error('project.reference.root must be a string or null');
@@ -137,6 +138,8 @@
     const inferredPreset = Object.prototype.hasOwnProperty.call(DETECTION_PRESETS, targetEntity) ? targetEntity : 'pig';
     const detection = normalizeDetection(options.detection || {preset: inferredPreset}, inferredPreset, cemVersion);
     const targetType = options.targetType || (detection.channel === 'armor' ? 'armor' : 'entity');
+    const texturePath = options.texturePath || null;
+    if (texturePath !== null && (typeof texturePath !== 'string' || !texturePath.startsWith('assets/') || !texturePath.endsWith('.png'))) throw new Error('project.texturePath must be an assets PNG path or null');
     assertModelId(modelId);
     return {
       format: 'cemst',
@@ -147,6 +150,7 @@
         cemVersion,
         targetType,
         targetEntity,
+        texturePath,
         detection,
         reference: options.reference ? clone(options.reference) : {rig: 'none', root: null, anchors: {}, bindings: {}, guides: []},
         resourcePack: {

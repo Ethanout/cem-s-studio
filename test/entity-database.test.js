@@ -33,7 +33,17 @@ test('models official armor stand UV branches only in verified versions', () => 
 test('searches versioned entity profiles by name, id, keyword, and category', () => {
   assert.deepEqual(searchProfiles('猪', '1.21.6').map(profile => profile.id), ['cold_pig', 'pig']);
   assert.deepEqual(searchProfiles('elytra', '1.21.11').map(profile => profile.id), ['elytra']);
-  assert.deepEqual(searchProfiles('', '1.21.6', 'projectile').map(profile => profile.id), ['arrow']);
+  assert.deepEqual(searchProfiles('', '1.21.6', 'projectile').map(profile => profile.id), ['arrow', 'fireball', 'snowball']);
   assert.equal(searchProfiles('armor', '1.21.11').length, 0);
   assert.equal(categoryOptionsFor('1.21.6').quadruped, 'Quadruped / 四足');
+});
+
+test('lists common expert entity profiles without claiming verified detection rules', () => {
+  for (const id of ['cow', 'chicken', 'wolf', 'zombie', 'skeleton', 'villager', 'boat', 'minecart', 'snowball']) {
+    const profile = profileFor(id, '1.21.11');
+    assert.equal(profile.expertDetection, true);
+    assert.match(profile.name, /expert detection/);
+  }
+  assert.equal(categoryOptionsFor('1.21.6').vehicle, 'Vehicle / 载具');
+  assert.ok(searchProfiles('村民', '1.21.6').some(profile => profile.id === 'villager'));
 });

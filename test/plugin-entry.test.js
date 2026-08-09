@@ -40,6 +40,8 @@ test('registers the CEM-S Studio project format and resource-pack workflow', () 
   assert.match(source, /data-cem-entity="category"/);
   assert.match(source, /searchProfiles/);
   assert.match(source, /detectionForPreset\(presetName, version\)/);
+  assert.match(source, /texture_path/);
+  assert.match(source, /Target texture path/);
 });
 
 test('keeps the standalone CEM-S export action inside CEM-S Studio projects', () => {

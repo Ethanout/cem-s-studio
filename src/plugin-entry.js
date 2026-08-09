@@ -49,7 +49,7 @@
       const expected = profile.textureSize || [];
       const hasBaseTexture = textures.some(texture => texture.width === expected[0] && texture.height === expected[1]);
       let issue = null;
-      if (textures.length && !profile.texturePath) issue = '当前实体使用动态纹理，需在专家模式指定资源包纹理路径';
+      if (textures.length && !(settings.texturePath || profile.texturePath)) issue = '当前实体使用动态纹理，需在高级设置指定资源包纹理路径';
       else if (textures.length && !hasBaseTexture) issue = `需要 ${expected[0]}×${expected[1]} 基础纹理`;
       return {count: textures.length, hasBaseTexture, issue, expected};
     } catch (error) {
@@ -218,6 +218,7 @@
       targetEntity: presetName,
       targetType: presetName === 'custom' ? value('render_target', current.targetType) : profile.targetType,
       detection,
+      texturePath: value('texture_path', current.texturePath || null),
       resourcePack: {name: value('pack_name', current.resourcePack.name), description: value('pack_description', current.resourcePack.description), packFormat: SUPPORTED_CEM_VERSIONS[version]}
     }).project;
     Project.cem_studio = next;
@@ -250,6 +251,7 @@
       corner_yx: {label: 'Transpose anchor corners', type: 'checkbox', value: primaryBranch.corner === 'yx'},
       cem_size: {label: 'CEM area size', type: 'number', value: primaryBranch.size, min: 0.01, step: 0.1},
       hide_unmatched: {label: 'Hide unmatched vanilla faces', type: 'checkbox', value: settings.detection.hideUnmatched},
+      texture_path: {label: 'Target texture path', description: 'For dynamic or expert entities, e.g. assets/minecraft/textures/entity/custom.png.', type: 'text', value: settings.texturePath || ''},
       pack_description: {label: 'Resource pack description', type: 'text', value: settings.resourcePack.description}
     });
     settingsDialog = new Dialog({
@@ -692,7 +694,8 @@
       let textureFile = null;
       if (referencedTextures.length) {
         const profile = profileFor(document.project.targetEntity, document.project.cemVersion);
-        if (!profile.texturePath) throw new Error(`${profile.name} uses a dynamic or custom Minecraft texture. Multi-texture pack export needs an explicit target texture path, which is not available for this entity profile.`);
+        const texturePath = document.project.texturePath || profile.texturePath;
+        if (!texturePath) throw new Error(`${profile.name} uses a dynamic or custom Minecraft texture. Set Target texture path in Advanced Settings before building.`);
         const expected = profile.textureSize || [];
         const primaryTexture = referencedTextures.find(texture => texture.width === expected[0] && texture.height === expected[1]);
         if (!primaryTexture) throw new Error(`${profile.name} needs one referenced ${expected[0]}x${expected[1]} base entity texture before its additional Blockbench textures can be packed.`);
@@ -700,7 +703,7 @@
           primaryTexture,
           marker: {pixel: document.project.detection.pixel, color: document.project.detection.color}
         });
-        textureFile = {path: profile.texturePath, content: textureAtlas.png, baseSize: expected.slice()};
+        textureFile = {path: texturePath, content: textureAtlas.png, baseSize: expected.slice()};
       }
       const entries = toCemModels(document.project.name, elements, {reference: document.project.reference, branches: document.project.detection.branches, textureAtlas});
       const exported = entries.length === 1

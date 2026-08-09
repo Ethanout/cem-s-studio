@@ -15,6 +15,12 @@
     };
   }
   const CUSTOM_DETECTION = singleDetection('entity', [63, 0], [0, 0, 1, 255], {mode: 'vertex_id', count: 1, index: 0}, {corner: 'yx'});
+  function expertProfile(name, category, keywords, referenceRig = 'none', textureSize = [64, 64]) {
+    return {
+      name: `${name} (expert detection)`, category, keywords, targetType: 'entity', referenceRig,
+      textureSize, expertDetection: true, detection: CUSTOM_DETECTION
+    };
+  }
   const PROFILES = {
     armor_stand: {
       name: 'Armor Stand', category: 'humanoid', keywords: ['armor stand', '盔甲架'], targetType: 'entity', referenceRig: 'armor_stand', textureSize: [64, 64], texturePath: 'assets/minecraft/textures/entity/armorstand/wood.png', versions: ['1.21.6'],
@@ -57,7 +63,19 @@
     custom: {
       name: 'Custom entity', category: 'custom', keywords: ['custom', '自定义'], targetType: 'entity', referenceRig: 'none', textureSize: [64, 64], expertDetection: true,
       detection: CUSTOM_DETECTION
-    }
+    },
+    cow: expertProfile('Cow', 'quadruped', ['cow', '牛'], 'pig', [64, 32]),
+    chicken: expertProfile('Chicken', 'quadruped', ['chicken', '鸡'], 'pig', [64, 32]),
+    wolf: expertProfile('Wolf', 'quadruped', ['wolf', '狼'], 'pig', [64, 32]),
+    cat: expertProfile('Cat', 'quadruped', ['cat', '猫'], 'pig', [64, 32]),
+    horse: expertProfile('Horse', 'quadruped', ['horse', '马'], 'pig', [64, 32]),
+    zombie: expertProfile('Zombie', 'humanoid', ['zombie', '僵尸'], 'player', [64, 64]),
+    skeleton: expertProfile('Skeleton', 'humanoid', ['skeleton', '骷髅'], 'player', [64, 32]),
+    villager: expertProfile('Villager', 'humanoid', ['villager', '村民'], 'player', [64, 64]),
+    boat: expertProfile('Boat', 'vehicle', ['boat', '船'], 'none', [64, 32]),
+    minecart: expertProfile('Minecart', 'vehicle', ['minecart', '矿车'], 'none', [64, 32]),
+    snowball: expertProfile('Snowball', 'projectile', ['snowball', '雪球'], 'arrow', [16, 16]),
+    fireball: expertProfile('Fireball', 'projectile', ['fireball', '火球'], 'arrow', [16, 16])
   };
 
   function clone(value) {
@@ -92,7 +110,7 @@
   }
 
   function categoryOptionsFor(version = '1.21.6') {
-    const labels = {humanoid: 'Humanoid / 人形', quadruped: 'Quadruped / 四足', projectile: 'Projectile / 投射物', equipment: 'Equipment / 装备', custom: 'Custom / 自定义'};
+    const labels = {humanoid: 'Humanoid / 人形', quadruped: 'Quadruped / 四足', projectile: 'Projectile / 投射物', equipment: 'Equipment / 装备', vehicle: 'Vehicle / 载具', custom: 'Custom / 自定义'};
     const categories = new Set(profilesFor(version).map(profile => profile.category || 'custom'));
     return Object.fromEntries([...categories].sort().map(category => [category, labels[category] || category]));
   }
