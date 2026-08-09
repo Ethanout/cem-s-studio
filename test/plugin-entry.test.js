@@ -57,6 +57,9 @@ test('registers the CEM-S Studio project format and resource-pack workflow', () 
   assert.match(source, /偏移快照/);
   assert.match(source, /detectionForPreset\(presetName, version\)/);
   assert.match(source, /texture_path/);
+  assert.match(source, /texture_paths/);
+  assert.match(source, /Additional variant texture paths/);
+  assert.match(source, /dynamic texture that cannot be written to a stable resource-pack path/);
   assert.match(source, /Target texture path/);
 });
 

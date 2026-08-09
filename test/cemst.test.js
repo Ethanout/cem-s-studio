@@ -23,6 +23,23 @@ test('persists an explicit target texture path for dynamic entities', () => {
   assert.throws(() => createProject({texturePath: 'textures/invalid.png'}), /project.texturePath/);
 });
 
+test('supports multiple static texture targets for entity variants', () => {
+  const project = createProject({
+    name: 'Pig Variants', targetEntity: 'pig',
+    texturePath: 'assets/minecraft/textures/entity/pig/temperate_pig.png',
+    texturePaths: [
+      'assets/minecraft/textures/entity/pig/custom_pig.png',
+      'assets/minecraft/textures/entity/pig/custom_pig.png'
+    ]
+  });
+  assert.deepEqual(project.project.texturePaths, [
+    'assets/minecraft/textures/entity/pig/temperate_pig.png',
+    'assets/minecraft/textures/entity/pig/custom_pig.png'
+  ]);
+  assert.equal(parseProject(serializeProject(project)).project.texturePath, project.project.texturePaths[0]);
+  assert.throws(() => createProject({texturePaths: ['textures/not-an-asset.png']}), /texturePaths/);
+});
+
 test('allows a host entity to use a different reference skeleton', () => {
   const project = createProject({name: 'Player Reference Jetpack', targetEntity: 'elytra', targetType: 'armor', referenceRig: 'player', detection: {preset: 'elytra'}});
   assert.equal(project.project.targetEntity, 'elytra');
@@ -194,6 +211,20 @@ test('adds generated texture atlases as binary resource-pack files', () => {
   const detection = files['assets/minecraft/shaders/include/cem_user/detection/entity/pig_details.glsl'];
   assert.match(detection, /uv = floor\(UV0 \* vec2\(64, 32\)\)/);
   assert.match(detection, /texCoord0 = UV0 \* vec2\(64, 32\) \/ vec2\(textureSize\(Sampler0, 0\)\)/);
+});
+
+test('writes one generated atlas to all configured variant texture paths', () => {
+  const project = createProject({name: 'Pig Variants', targetEntity: 'pig'});
+  const png = new Uint8Array([137, 80, 78, 71]);
+  const paths = [
+    'assets/minecraft/textures/entity/pig/temperate_pig.png',
+    'assets/minecraft/textures/entity/pig/custom_pig.png'
+  ];
+  const files = buildPackFiles(project, 'case 1: { }', {textureFile: {paths, content: png, baseSize: [64, 32]}});
+  for (const path of paths) assert.deepEqual([...files[path]], [...png]);
+  const mapping = JSON.parse(files['cem-studio/texture-mappings/pig_variants.json']);
+  assert.deepEqual(mapping.paths, paths);
+  assert.deepEqual(mapping.baseSize, [64, 32]);
 });
 
 test('declares the modern resource-pack format range for 1.21.11 and 26.1+', () => {

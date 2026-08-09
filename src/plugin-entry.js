@@ -51,7 +51,8 @@
       const expected = profile.textureSize || [];
       const hasBaseTexture = textures.some(texture => texture.width === expected[0] && texture.height === expected[1]);
       let issue = null;
-      if (textures.length && !(settings.texturePath || profile.texturePath)) issue = '当前实体使用动态纹理，需在高级设置指定资源包纹理路径';
+      const configuredPaths = settings.texturePaths?.length ? settings.texturePaths : (settings.texturePath ? [settings.texturePath] : []);
+      if (textures.length && !(configuredPaths.length || profile.texturePath)) issue = '当前实体使用动态纹理，无法自动写入玩家皮肤；请在高级设置指定可被资源包覆盖的纹理路径';
       else if (textures.length && !hasBaseTexture) issue = `需要 ${expected[0]}×${expected[1]} 基础纹理`;
       return {count: textures.length, hasBaseTexture, issue, expected};
     } catch (error) {
@@ -394,6 +395,7 @@
     const version = value('minecraft_version', current.cemVersion);
     const presetName = value('entity_profile', value('detection_preset', current.targetEntity));
     const profile = profileFor(presetName, version);
+    const parseTexturePaths = value => String(value || '').split(/[\r\n,;]+/).map(path => path.trim()).filter(Boolean);
     const currentDetection = current.detection;
     const currentBranch = currentDetection.branches[0];
     const detection = presetName === 'custom' ? {
@@ -421,6 +423,7 @@
       detection,
       referenceRig: value('reference_rig', current.referenceRig || profile.referenceRig || 'none'),
       texturePath: value('texture_path', current.texturePath || null),
+      texturePaths: parseTexturePaths(value('texture_paths', (current.texturePaths || []).slice(1).join('\n'))),
       resourcePack: {name: value('pack_name', current.resourcePack.name), description: value('pack_description', current.resourcePack.description), packFormat: SUPPORTED_CEM_VERSIONS[version]}
     }).project;
     Project.cem_studio = next;
@@ -455,6 +458,7 @@
       cem_size: {label: 'CEM area size', type: 'number', value: primaryBranch.size, min: 0.01, step: 0.1},
       hide_unmatched: {label: 'Hide unmatched vanilla faces', type: 'checkbox', value: settings.detection.hideUnmatched},
       texture_path: {label: 'Target texture path', description: 'For dynamic or expert entities, e.g. assets/minecraft/textures/entity/custom.png.', type: 'text', value: settings.texturePath || ''},
+      texture_paths: {label: 'Additional variant texture paths', description: 'Optional resource-pack PNG paths, one per line. Studio writes the same generated atlas to every listed variant.', type: 'textarea', value: (settings.texturePaths || []).slice(1).join('\n')},
       pack_description: {label: 'Resource pack description', type: 'text', value: settings.resourcePack.description}
     });
     settingsDialog = new Dialog({
@@ -956,13 +960,14 @@
     let textureFile = null;
     if (referencedTextures.length) {
       const profile = profileFor(document.project.targetEntity, document.project.cemVersion);
-      const texturePath = document.project.texturePath || profile.texturePath;
-      if (!texturePath) throw new Error(`${profile.name} uses a dynamic or custom Minecraft texture. Set Target texture path in Advanced Settings before building.`);
+      const configuredPaths = document.project.texturePaths?.length ? document.project.texturePaths : (document.project.texturePath ? [document.project.texturePath] : []);
+      const texturePaths = configuredPaths.length ? configuredPaths : (profile.texturePath ? [profile.texturePath] : []);
+      if (!texturePaths.length) throw new Error(`${profile.name} uses a dynamic texture that cannot be written to a stable resource-pack path. Set Target texture path in Advanced Settings, or use a static entity texture instead of a player skin.`);
       const expected = profile.textureSize || [];
       const primaryTexture = referencedTextures.find(texture => texture.width === expected[0] && texture.height === expected[1]);
       if (!primaryTexture) throw new Error(`${profile.name} needs one referenced ${expected[0]}x${expected[1]} base entity texture before its additional Blockbench textures can be packed.`);
       textureAtlas = renderTextureAtlas(referencedTextures, {primaryTexture, marker: {pixel: document.project.detection.pixel, color: document.project.detection.color}});
-      textureFile = {path: texturePath, content: textureAtlas.png, baseSize: expected.slice()};
+      textureFile = {path: texturePaths[0], paths: texturePaths, content: textureAtlas.png, baseSize: expected.slice()};
     }
     const entries = toCemModels(document.project.name, elements, {reference: document.project.reference, branches: document.project.detection.branches, textureAtlas});
     const exported = entries.length === 1

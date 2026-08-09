@@ -22,6 +22,16 @@
     if (typeof value !== 'string' || !/^[a-z0-9][a-z0-9_-]*$/.test(value)) throw new Error('workspace model id must be a lowercase identifier');
   }
 
+  function normalizeTexturePaths(texturePath, texturePaths) {
+    const paths = [];
+    for (const path of [texturePath, ...(Array.isArray(texturePaths) ? texturePaths : [])]) {
+      if (path === null || path === undefined || path === '') continue;
+      if (typeof path !== 'string' || !path.startsWith('assets/') || !path.endsWith('.png')) throw new Error('project.texturePaths must contain assets PNG paths');
+      if (!paths.includes(path)) paths.push(path);
+    }
+    return paths;
+  }
+
   function detectionForPreset(name, version = '1.21.6') {
     return entityDatabase.detectionFor(name, version);
   }
@@ -121,7 +131,9 @@
     if (!['entity', 'armor'].includes(document.project.targetType)) throw new Error('project.targetType must be entity or armor');
     if (document.project.targetType !== detection.channel) throw new Error('project.targetType must match detection.channel');
     if (document.project.referenceRig !== undefined && !['none', 'player', 'pig', 'elytra', 'arrow', 'armor_stand', 'custom'].includes(document.project.referenceRig)) throw new Error('project.referenceRig is unsupported');
-    if (document.project.texturePath !== null && document.project.texturePath !== undefined && (typeof document.project.texturePath !== 'string' || !document.project.texturePath.startsWith('assets/') || !document.project.texturePath.endsWith('.png'))) throw new Error('project.texturePath must be an assets PNG path or null');
+    const texturePaths = normalizeTexturePaths(document.project.texturePath, document.project.texturePaths);
+    document.project.texturePath = texturePaths[0] || null;
+    document.project.texturePaths = texturePaths;
     const reference = document.project.reference || {rig: 'none', root: null, anchors: {}, bindings: {}, transforms: {}, guides: []};
     if (!['none', 'player', 'pig', 'elytra', 'arrow', 'armor_stand', 'custom'].includes(reference.rig)) throw new Error('project.reference.rig is unsupported');
     if (reference.root !== null && typeof reference.root !== 'string') throw new Error('project.reference.root must be a string or null');
@@ -180,8 +192,8 @@
     const inferredPreset = Object.prototype.hasOwnProperty.call(DETECTION_PRESETS, targetEntity) ? targetEntity : 'pig';
     const detection = normalizeDetection(options.detection || {preset: inferredPreset}, inferredPreset, cemVersion);
     const targetType = options.targetType || (detection.channel === 'armor' ? 'armor' : 'entity');
-    const texturePath = options.texturePath || null;
-    if (texturePath !== null && (typeof texturePath !== 'string' || !texturePath.startsWith('assets/') || !texturePath.endsWith('.png'))) throw new Error('project.texturePath must be an assets PNG path or null');
+    const texturePaths = normalizeTexturePaths(options.texturePath, options.texturePaths);
+    const texturePath = texturePaths[0] || null;
     assertModelId(modelId);
     return {
       format: 'cemst',
@@ -194,6 +206,7 @@
         targetEntity,
         referenceRig: options.referenceRig || (entityDatabase.profileFor(inferredPreset, cemVersion).referenceRig || 'none'),
         texturePath,
+        texturePaths,
         detection,
         reference: options.reference ? clone(options.reference) : {rig: 'none', root: null, anchors: {}, bindings: {}, transforms: {}, guides: []},
         resourcePack: {
