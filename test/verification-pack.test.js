@@ -41,6 +41,7 @@ test('builds a self-contained 1.21.11 Minecraft verification pack', () => {
     const detection = fs.readFileSync(path.join(output, 'assets/minecraft/shaders/include/cem_user/detection/entity/cem_s_studio_verification_pig.glsl'), 'utf8');
     assert.match(detection, /ivec2\(63, 0\)/);
     assert.match(detection, /% 42 == 3/);
+    assert.match(detection, /cem_keep_original = 1/);
     const model = fs.readFileSync(path.join(output, 'assets/minecraft/shaders/include/cem_user/models/entity/cem_s_studio_verification_pig.glsl'), 'utf8');
     assert.match(model, /case 901:/);
     assert.match(model, /ADD_BOX/);

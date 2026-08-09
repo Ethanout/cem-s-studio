@@ -10,6 +10,7 @@ in vec3 cem_glPos;
 in vec4 cem_lightMapColor;
 flat in int cem;
 flat in int cem_reverse;
+flat in int cem_keep_original;
 flat in vec4 cem_light;
 
 #define MAX_DEPTH 1000000
@@ -123,7 +124,9 @@ void writeDepth(vec3 Pos)
     }
     else
     {
-        vec4 ProjPos = ProjMat * ModelViewMat * vec4(Pos, 1);
+        // Ray hits are already in view space. Applying ModelViewMat again
+        // produces incorrect depth whenever the camera is rotated.
+        vec4 ProjPos = ProjMat * vec4(Pos, 1);
         gl_FragDepth = ProjPos.z / ProjPos.w * 0.5 + 0.5;
     }
 }

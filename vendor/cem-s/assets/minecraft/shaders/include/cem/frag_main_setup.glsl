@@ -51,3 +51,19 @@ float modelSize = length((gl_PrimitiveID % 2 == 1 ? Pos1 : Pos2) - Pos3);
 
 float minT = MAX_DEPTH;
 color = vec4(0);
+
+if (cem_keep_original == 1)
+{
+    vec3 originalHit = triIntersect(vec3(0), dir, Pos1, Pos2, Pos3);
+    if (originalHit.z < minT)
+    {
+        vec2 otherUv = gl_PrimitiveID % 2 == 0 ? vec2(UV1.x, UV2.y) : vec2(UV2.x, UV1.y);
+        vec2 originalUv = UV1 + originalHit.x * (UV2 - UV1) + originalHit.y * (otherUv - UV1);
+        vec4 originalColor = texelFetch(Sampler0, ivec2(originalUv), 0) * CEM_VERTEX_COLOR * ColorModulator;
+        if (originalColor.a >= 0.1)
+        {
+            minT = originalHit.z;
+            color = originalColor;
+        }
+    }
+}

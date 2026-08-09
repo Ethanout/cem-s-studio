@@ -43,6 +43,7 @@ out vec3 cem_uv1, cem_uv2;
 out vec4 cem_lightMapColor;
 flat out int cem;
 flat out int cem_reverse;
+flat out int cem_keep_original;
 flat out vec4 cem_light;
 
 void main() {
@@ -62,7 +63,7 @@ void main() {
     cem_glPos = vec3(0);
     cem_lightMapColor = vec4(1);
     cem_light = vec4(1);
-    cem = cem_reverse = 0;
+    cem = cem_reverse = cem_keep_original = 0;
     float cem_size = 1;
 
     vec4 testColor = texelFetch(Sampler0, ivec2(63, 0), 0);

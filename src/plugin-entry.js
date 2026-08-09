@@ -224,6 +224,31 @@
     Blockbench.showQuickMessage(`CEM-S Studio: switched to ${profile.name}.`);
   }
 
+  function createStudioModel() {
+    if (typeof Group !== 'function' || typeof Cube !== 'function') {
+      Blockbench.showMessageBox({title: 'CEM-S Studio', message: '当前 Blockbench 版本无法创建模型部件。'});
+      return;
+    }
+    Undo.initEdit({outliner: true, elements: []});
+    const group = new Group({name: 'CEM Model'}).init();
+    const cube = new Cube({name: 'Cube', from: [-2, 0, -2], to: [2, 4, 2]}).addTo(group).init();
+    Undo.finishEdit('Create CEM-S model part');
+    Outliner.selected.splice(0, Outliner.selected.length, cube);
+    Blockbench.dispatchEvent('update_selection');
+    Project.saved = false;
+    refreshStudioPanel();
+    globalThis.Canvas?.updateAll?.();
+  }
+
+  function createStudioTexture() {
+    const action = globalThis.BarItems?.create_texture;
+    if (action?.click) {
+      action.click();
+      return;
+    }
+    Blockbench.showMessageBox({title: 'CEM-S Studio', message: '请使用 Blockbench 的创建纹理功能。'});
+  }
+
   function installStudioPanel() {
     if (typeof Panel !== 'function' || studioPanel) return;
     studioPanel = new Panel('cem_s_studio_panel', {
@@ -264,6 +289,8 @@
           <button data-cem-action="apply-entity" title="应用实体类型"><i class="material-icons">check</i> 应用实体</button>
         </div>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px">
+          <button data-cem-action="create-model" title="创建一个用户模型部件"><i class="material-icons">add_box</i> 创建模型</button>
+          <button data-cem-action="create-texture" title="打开 Blockbench 纹理创建器"><i class="material-icons">texture</i> 创建纹理</button>
           <button data-cem-action="settings" title="项目设置"><i class="material-icons">settings</i> 设置</button>
           <button data-cem-action="reference" title="添加参考模型"><i class="material-icons">accessibility</i> 参考模型</button>
           <button data-cem-action="render" title="设置选中部件的渲染属性"><i class="material-icons">palette</i> 渲染属性</button>
@@ -273,6 +300,8 @@
           <button data-cem-action="build" title="创建资源包"><i class="material-icons">create_new_folder</i> 创建资源包</button>
         </div>
       </div>`;
+    studioPanel.node.querySelector('[data-cem-action="create-model"]').addEventListener('click', createStudioModel);
+    studioPanel.node.querySelector('[data-cem-action="create-texture"]').addEventListener('click', createStudioTexture);
     studioPanel.node.querySelector('[data-cem-action="settings"]').addEventListener('click', () => showProjectSettings(false));
     studioPanel.node.querySelector('[data-cem-entity="search"]').addEventListener('input', populateStudioEntityBrowser);
     studioPanel.node.querySelector('[data-cem-entity="category"]').addEventListener('change', populateStudioEntityBrowser);
@@ -415,6 +444,7 @@
     } : detectionForPreset(presetName, version);
     detection.originalMode = result.original_model_mode || currentDetection.originalMode || (detection.hideUnmatched ? 'hide_unmatched' : 'keep');
     detection.hideUnmatched = detection.originalMode === 'hide_unmatched';
+    detection.matchedFaceMode = value('attachment_mode', currentDetection.matchedFaceMode || 'overlay');
     const next = createProject({
       ...current,
       name: value('project_name', current.name),
@@ -443,6 +473,7 @@
       model_id: {label: 'Model ID', description: 'Keep this ID unique in the target resource pack.', type: 'number', value: settings.modelId, min: 0, step: 1},
       entity_profile: {label: 'Entity type', description: 'Chooses the reference model and CEM-S detection profile.', type: 'select', options: optionsFor(settings.cemVersion), value: settings.targetEntity},
       reference_rig: {label: 'Reference model', description: 'Choose the coordinate skeleton used for positioning attachments. It can differ from the rendered host entity.', type: 'select', options: {none: 'None', player: 'Player', pig: 'Pig', elytra: 'Elytra / Armor', arrow: 'Arrow / Projectile', armor_stand: 'Armor Stand'}, value: settings.referenceRig || settings.reference?.rig || 'none'},
+      attachment_mode: {label: '模型用途', description: '挂件会保留作为锚点的原版表面；替换模型会移除该表面。', type: 'select', options: {overlay: '挂件 / 叠加在原模型上', replace: '替换命中的原版表面'}, value: settings.detection.matchedFaceMode || 'overlay'},
       pack_name: {label: 'Resource pack name', type: 'text', value: settings.resourcePack.name}
     };
     if (advanced) Object.assign(form, {

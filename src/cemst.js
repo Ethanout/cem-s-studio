@@ -83,6 +83,8 @@
       detection.originalMode = detection.hideUnmatched ? 'hide_unmatched' : 'keep';
     }
     detection.hideUnmatched = detection.originalMode === 'hide_unmatched';
+    detection.matchedFaceMode = source.matchedFaceMode || detection.matchedFaceMode || 'overlay';
+    if (!['overlay', 'replace'].includes(detection.matchedFaceMode)) throw new Error('detection.matchedFaceMode must be overlay or replace');
     detection.mode = 'texture_marker';
     return detection;
   }
@@ -135,6 +137,7 @@
     });
     if (typeof detection.hideUnmatched !== 'boolean') throw new Error('detection.hideUnmatched must be boolean');
     if (!['keep', 'hide_unmatched'].includes(detection.originalMode)) throw new Error('detection.originalMode must be keep or hide_unmatched');
+    if (!['overlay', 'replace'].includes(detection.matchedFaceMode)) throw new Error('detection.matchedFaceMode must be overlay or replace');
     detection.hideUnmatched = detection.originalMode === 'hide_unmatched';
     if (!['entity', 'armor'].includes(document.project.targetType)) throw new Error('project.targetType must be entity or armor');
     if (document.project.targetType !== detection.channel) throw new Error('project.targetType must match detection.channel');

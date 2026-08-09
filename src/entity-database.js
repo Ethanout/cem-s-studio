@@ -37,7 +37,7 @@
       }
     },
     pig: {
-      name: 'Pig', category: 'quadruped', keywords: ['pig', '猪'], targetType: 'entity', referenceRig: 'pig', textureSize: [64, 32], texturePath: 'assets/minecraft/textures/entity/pig/temperate_pig.png',
+      name: 'Pig', category: 'quadruped', keywords: ['pig', '猪'], targetType: 'entity', referenceRig: 'pig', textureSize: [64, 32], textureSizeByVersion: {'1.21.11': [64, 64], '26.1+': [64, 64]}, texturePath: 'assets/minecraft/textures/entity/pig/temperate_pig.png',
       detection: singleDetection('entity', [63, 0], [255, 0, 0, 255], {mode: 'vertex_id', count: 42, index: 3}, {anchor: 'head', reverse: true})
     },
     cold_pig: {
@@ -92,7 +92,11 @@
     if (!profile) throw new Error(`unsupported entity profile: ${id}`);
     const versions = profile.versions || SUPPORTED_VERSIONS;
     if (!versions.includes(version)) throw new Error(`entity profile ${id} is not verified for ${version}`);
-    return {id, ...clone(profile), versions: versions.slice()};
+    const resolved = clone(profile);
+    if (resolved.textureSizeByVersion && resolved.textureSizeByVersion[version]) {
+      resolved.textureSize = resolved.textureSizeByVersion[version].slice();
+    }
+    return {id, ...resolved, versions: versions.slice()};
   }
 
   function profilesFor(version = '1.21.6') {

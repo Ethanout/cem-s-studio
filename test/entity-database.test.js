@@ -12,6 +12,12 @@ test('provides versioned entity profiles for every supported runtime', () => {
   }
 });
 
+test('resolves pig texture dimensions for each Minecraft runtime', () => {
+  assert.deepEqual(profileFor('pig', '1.21.6').textureSize, [64, 32]);
+  assert.deepEqual(profileFor('pig', '1.21.11').textureSize, [64, 64]);
+  assert.deepEqual(profileFor('pig', '26.1+').textureSize, [64, 64]);
+});
+
 test('keeps expert-only profiles explicit instead of inventing detection values', () => {
   const player = profileFor('player');
   assert.equal(player.referenceRig, 'player');

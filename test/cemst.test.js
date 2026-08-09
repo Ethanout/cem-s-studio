@@ -141,11 +141,15 @@ test('provides CEM-S detection presets for common entity models', () => {
 test('stores original model visibility as a clear compatibility mode', () => {
   const keep = createProject({detection: {preset: 'pig', originalMode: 'keep'}});
   const hide = createProject({detection: {preset: 'pig', originalMode: 'hide_unmatched'}});
+  const replace = createProject({detection: {preset: 'pig', matchedFaceMode: 'replace'}});
   assert.equal(keep.project.detection.originalMode, 'keep');
   assert.equal(keep.project.detection.hideUnmatched, false);
+  assert.equal(keep.project.detection.matchedFaceMode, 'overlay');
   assert.equal(hide.project.detection.originalMode, 'hide_unmatched');
   assert.equal(hide.project.detection.hideUnmatched, true);
+  assert.equal(replace.project.detection.matchedFaceMode, 'replace');
   assert.throws(() => createProject({detection: {preset: 'pig', originalMode: 'overlay'}}), /originalMode/);
+  assert.throws(() => createProject({detection: {preset: 'pig', matchedFaceMode: 'invalid'}}), /matchedFaceMode/);
 });
 
 test('round-trips multi-part detection branches with UV matching', () => {
@@ -208,6 +212,7 @@ test('builds a new resource pack with managed model and detection files', () => 
   assert.match(files['assets/minecraft/shaders/include/cem_user/detection/entity/pig_ears.glsl'], /ivec2\(63, 0\)/);
   assert.match(files['assets/minecraft/shaders/include/cem_user/detection/entity/pig_ears.glsl'], /gl_VertexID \/ 4 % 42 == 3/);
   assert.match(files['assets/minecraft/shaders/include/cem_user/detection/entity/pig_ears.glsl'], /cem_reverse = 1/);
+  assert.match(files['assets/minecraft/shaders/include/cem_user/detection/entity/pig_ears.glsl'], /cem_keep_original = 1/);
   assert.match(files['assets/minecraft/shaders/include/cem_user/models/entity/pig_ears.glsl'], /case 7/);
 });
 

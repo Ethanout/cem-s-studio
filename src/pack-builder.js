@@ -41,6 +41,7 @@
       const setup = [
         `cem = ${project.project.modelId + branch.modelIdOffset};`,
         `cem_reverse = ${branch.reverse ? 1 : 0};`,
+        `cem_keep_original = ${detection.matchedFaceMode === 'overlay' ? 1 : 0};`,
         branch.corner === 'yx' ? 'corner = corners[(gl_VertexID) % 4].yx;' : null,
         `cem_size = ${branch.size};`
       ].filter(Boolean).map(line => `        ${line}`).join('\n');
