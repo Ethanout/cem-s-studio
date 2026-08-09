@@ -28,6 +28,9 @@ test('registers the CEM-S Studio project format and resource-pack workflow', () 
   assert.match(source, /globalThis\.Mesh\?\.all/);
   assert.match(source, /new Panel\(['"]cem_s_studio_panel/);
   assert.match(source, /data-cem-state="entity"/);
+  assert.match(source, /data-cem-state="textures"/);
+  assert.match(source, /studioTextureState/);
+  assert.match(source, /缺少基础纹理/);
   assert.match(source, /data-cem-action="reference"/);
   assert.match(source, /data-cem-entity="search"/);
   assert.match(source, /data-cem-entity="category"/);

@@ -37,6 +37,24 @@
     return Project.cem_studio ? JSON.parse(JSON.stringify(Project.cem_studio)) : defaultSettings();
   }
 
+  function studioTextureState(settings, reference) {
+    const elements = [...(globalThis.Cube?.all || []), ...(globalThis.Mesh?.all || [])];
+    try {
+      const textures = typeof Texture === 'function'
+        ? collectReferencedTextures(elements, Texture.all || [], {isReference: element => isReferenceCube(element, reference)})
+        : [];
+      const profile = profileFor(settings.targetEntity, settings.cemVersion);
+      const expected = profile.textureSize || [];
+      const hasBaseTexture = textures.some(texture => texture.width === expected[0] && texture.height === expected[1]);
+      let issue = null;
+      if (textures.length && !profile.texturePath) issue = '当前实体使用动态纹理，需在专家模式指定资源包纹理路径';
+      else if (textures.length && !hasBaseTexture) issue = `需要 ${expected[0]}×${expected[1]} 基础纹理`;
+      return {count: textures.length, hasBaseTexture, issue, expected};
+    } catch (error) {
+      return {count: 0, hasBaseTexture: false, issue: error.message, expected: []};
+    }
+  }
+
   function studioPanelState() {
     const settings = getSettings();
     const reference = settings.reference || {};
@@ -44,7 +62,8 @@
     const bindingCount = Object.keys(reference.bindings || {}).length;
     const hasReference = !!reference.root && reference.rig !== 'none';
     const modelCount = [...(globalThis.Cube?.all || []), ...(globalThis.Mesh?.all || [])].filter(element => !isReferenceCube(element, reference)).length;
-    return {settings, anchorCount, bindingCount, hasReference, modelCount};
+    const texture = studioTextureState(settings, reference);
+    return {settings, anchorCount, bindingCount, hasReference, modelCount, texture};
   }
 
   function refreshStudioPanel() {
@@ -54,17 +73,19 @@
     const entityName = profileFor(settings.targetEntity, settings.cemVersion)?.name || settings.targetEntity || '未选择';
     const referenceLabel = state.hasReference ? `${state.anchorCount} 个锚点` : '未添加';
     const bindingLabel = state.bindingCount ? `${state.bindingCount} 个已绑定` : '暂无绑定';
-    const next = !state.hasReference ? '先添加参考模型' : !state.modelCount ? '创建一个 Cube 或 Mesh' : !state.bindingCount ? '把模型拖入参考锚点' : '可以创建资源包';
+    const textureLabel = state.texture.count ? `${state.texture.count} 张用户纹理${state.texture.hasBaseTexture ? '' : '（缺少基础纹理）'}` : '未指定用户纹理';
+    const next = !state.hasReference ? '先添加参考模型' : !state.modelCount ? '创建一个 Cube 或 Mesh' : !state.bindingCount ? '把模型拖入参考锚点' : state.texture.issue || '可以创建资源包';
     const setText = (selector, value) => { const node = studioPanel.node.querySelector(selector); if (node) node.textContent = value; };
     setText('[data-cem-state="entity"]', `${entityName} · ${settings.cemVersion}`);
     setText('[data-cem-state="pack"]', settings.resourcePack?.name || '未设置资源包');
     setText('[data-cem-state="reference"]', referenceLabel);
     setText('[data-cem-state="binding"]', bindingLabel);
+    setText('[data-cem-state="textures"]', textureLabel);
     setText('[data-cem-state="next"]', next);
     const exportButton = studioPanel.node.querySelector('[data-cem-action="export"]');
     const buildButton = studioPanel.node.querySelector('[data-cem-action="build"]');
     if (exportButton) exportButton.disabled = state.modelCount === 0;
-    if (buildButton) buildButton.disabled = state.modelCount === 0;
+    if (buildButton) buildButton.disabled = state.modelCount === 0 || !!state.texture.issue;
     const entitySelect = studioPanel.node.querySelector('[data-cem-entity="profile"]');
     if (entitySelect && entitySelect.dataset.version !== settings.cemVersion) populateStudioEntityBrowser();
   }
@@ -129,6 +150,7 @@
         <div data-cem-state="pack" style="margin-bottom: 4px"></div>
         <div data-cem-state="reference" style="margin-bottom: 4px"></div>
         <div data-cem-state="binding" style="margin-bottom: 8px"></div>
+        <div data-cem-state="textures" style="margin-bottom: 8px"></div>
         <div data-cem-state="next" style="margin-bottom: 8px; color: var(--color-bright)"></div>
         <div style="display: grid; gap: 4px; margin-bottom: 8px">
           <input data-cem-entity="search" type="search" placeholder="搜索实体" aria-label="搜索实体">

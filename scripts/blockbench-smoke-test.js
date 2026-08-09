@@ -184,7 +184,7 @@ async function main() {
 
         const studioMenu = MenuBar.menus.cem_s_studio;
         const studioPanel = Panels?.cem_s_studio_panel;
-        const formatSelected = Format === format;
+        const formatSelected = Format?.id === 'cem_s_studio' || Format === format;
         const primaryTexture = new Texture({name: 'Smoke Entity Texture', width: 64, height: 32}).add(false);
         primaryTexture.canvas.width = 64;
         primaryTexture.canvas.height = 32;
