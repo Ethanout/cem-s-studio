@@ -5,7 +5,7 @@
   const {REFERENCE_PREFIX, REFERENCE_CUBE_PREFIX, anchorsFor, guidesFor, isReferenceGroup} = CemSReferenceRigs;
   const {slugify, buildPackFiles, mergePackFiles} = CemSPackBuilder;
   const {loadRuntimeFiles} = CemSRuntime;
-  const {profileFor, optionsFor} = CemSEntityDatabase;
+  const {profileFor, optionsFor, categoryOptionsFor, searchProfiles} = CemSEntityDatabase;
   let exportAction;
   let exportDialog;
   let settingsAction;
@@ -64,6 +64,55 @@
     const buildButton = studioPanel.node.querySelector('[data-cem-action="build"]');
     if (exportButton) exportButton.disabled = state.modelCount === 0;
     if (buildButton) buildButton.disabled = state.modelCount === 0;
+    const entitySelect = studioPanel.node.querySelector('[data-cem-entity="profile"]');
+    if (entitySelect && entitySelect.dataset.version !== settings.cemVersion) populateStudioEntityBrowser();
+  }
+
+  function populateStudioEntityBrowser() {
+    if (!studioPanel?.node) return;
+    const settings = getSettings();
+    const categorySelect = studioPanel.node.querySelector('[data-cem-entity="category"]');
+    const searchInput = studioPanel.node.querySelector('[data-cem-entity="search"]');
+    const profileSelect = studioPanel.node.querySelector('[data-cem-entity="profile"]');
+    if (!categorySelect || !searchInput || !profileSelect) return;
+    if (categorySelect.dataset.version !== settings.cemVersion) {
+      const categories = categoryOptionsFor(settings.cemVersion);
+      categorySelect.innerHTML = '<option value="all">全部分类</option>' + Object.entries(categories).map(([id, label]) => `<option value="${id}">${label}</option>`).join('');
+      categorySelect.dataset.version = settings.cemVersion;
+      categorySelect.value = 'all';
+    }
+    const matches = searchProfiles(searchInput.value, settings.cemVersion, categorySelect.value || 'all');
+    profileSelect.innerHTML = matches.map(profile => `<option value="${profile.id}">${profile.name}</option>`).join('');
+    profileSelect.dataset.version = settings.cemVersion;
+    if (matches.some(profile => profile.id === settings.targetEntity)) profileSelect.value = settings.targetEntity;
+  }
+
+  function applyStudioEntitySelection() {
+    const select = studioPanel?.node?.querySelector('[data-cem-entity="profile"]');
+    const profileId = select?.value;
+    if (!profileId) {
+      Blockbench.showQuickMessage('CEM-S Studio: no matching entity profile.');
+      return;
+    }
+    const settings = getSettings();
+    if (profileId === settings.targetEntity) return;
+    const profile = profileFor(profileId, settings.cemVersion);
+    const reference = settings.reference || {};
+    if (reference.root && reference.rig !== profile.referenceRig) {
+      const root = findGroupByReference(reference.root);
+      const hasBindings = Object.keys(reference.bindings || {}).length > 0;
+      const hasAuthorElements = root && [...(globalThis.Cube?.all || []), ...(globalThis.Mesh?.all || [])].some(element => isInsideGroup(element, root) && !isReferenceCube(element, reference));
+      if (hasBindings || hasAuthorElements) {
+        Blockbench.showMessageBox({title: 'CEM-S Studio entity switch', message: 'Move or unbind author model parts from the current reference model before switching entity type.'});
+        return;
+      }
+      root?.remove?.();
+      Project.cem_studio = Object.assign({}, settings, {reference: {rig: 'none', root: null, anchors: {}, bindings: {}, guides: []}});
+    }
+    setSettings({entity_profile: profileId, minecraft_version: settings.cemVersion});
+    if (profile.referenceRig !== 'none' && !getSettings().reference?.root) addReferenceRig(profile.referenceRig);
+    populateStudioEntityBrowser();
+    Blockbench.showQuickMessage(`CEM-S Studio: switched to ${profile.name}.`);
   }
 
   function installStudioPanel() {
@@ -80,6 +129,12 @@
         <div data-cem-state="reference" style="margin-bottom: 4px"></div>
         <div data-cem-state="binding" style="margin-bottom: 8px"></div>
         <div data-cem-state="next" style="margin-bottom: 8px; color: var(--color-bright)"></div>
+        <div style="display: grid; gap: 4px; margin-bottom: 8px">
+          <input data-cem-entity="search" type="search" placeholder="搜索实体" aria-label="搜索实体">
+          <select data-cem-entity="category" aria-label="实体分类"></select>
+          <select data-cem-entity="profile" aria-label="实体类型"></select>
+          <button data-cem-action="apply-entity" title="应用实体类型"><i class="material-icons">check</i> 应用实体</button>
+        </div>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px">
           <button data-cem-action="settings" title="项目设置"><i class="material-icons">settings</i> 设置</button>
           <button data-cem-action="reference" title="添加参考模型"><i class="material-icons">accessibility</i> 参考模型</button>
@@ -88,9 +143,13 @@
         </div>
       </div>`;
     studioPanel.node.querySelector('[data-cem-action="settings"]').addEventListener('click', () => showProjectSettings(false));
+    studioPanel.node.querySelector('[data-cem-entity="search"]').addEventListener('input', populateStudioEntityBrowser);
+    studioPanel.node.querySelector('[data-cem-entity="category"]').addEventListener('change', populateStudioEntityBrowser);
+    studioPanel.node.querySelector('[data-cem-action="apply-entity"]').addEventListener('click', applyStudioEntitySelection);
     studioPanel.node.querySelector('[data-cem-action="reference"]').addEventListener('click', addConfiguredReference);
     studioPanel.node.querySelector('[data-cem-action="export"]').addEventListener('click', exportCurrentProject);
     studioPanel.node.querySelector('[data-cem-action="build"]').addEventListener('click', () => buildResourcePack('new'));
+    populateStudioEntityBrowser();
     refreshStudioPanel();
   }
 
@@ -123,7 +182,7 @@
         size: Number(value('cem_size', currentBranch.size)), modelScale: currentBranch.modelScale || 8
       }],
       hideUnmatched: result.hide_unmatched === undefined ? currentDetection.hideUnmatched : !!result.hide_unmatched
-    } : detectionForPreset(presetName);
+    } : detectionForPreset(presetName, version);
     const next = createProject({
       ...current,
       name: value('project_name', current.name),

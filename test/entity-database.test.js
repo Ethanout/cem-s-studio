@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const {SUPPORTED_VERSIONS, profilesFor, profileFor, optionsFor, detectionFor} = require('../src/entity-database.js');
+const {SUPPORTED_VERSIONS, profilesFor, profileFor, optionsFor, categoryOptionsFor, searchProfiles, detectionFor} = require('../src/entity-database.js');
 
 test('provides versioned entity profiles for every supported runtime', () => {
   for (const version of SUPPORTED_VERSIONS) {
@@ -28,4 +28,12 @@ test('models official armor stand UV branches only in verified versions', () => 
   assert.equal(optionsFor('1.21.6').armor_stand, 'Armor Stand');
   assert.equal(optionsFor('1.21.11').armor_stand, undefined);
   assert.throws(() => profileFor('armor_stand', '26.1+'), /not verified/);
+});
+
+test('searches versioned entity profiles by name, id, keyword, and category', () => {
+  assert.deepEqual(searchProfiles('猪', '1.21.6').map(profile => profile.id), ['cold_pig', 'pig']);
+  assert.deepEqual(searchProfiles('elytra', '1.21.11').map(profile => profile.id), ['elytra']);
+  assert.deepEqual(searchProfiles('', '1.21.6', 'projectile').map(profile => profile.id), ['arrow']);
+  assert.equal(searchProfiles('armor', '1.21.11').length, 0);
+  assert.equal(categoryOptionsFor('1.21.6').quadruped, 'Quadruped / 四足');
 });

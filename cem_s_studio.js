@@ -384,7 +384,7 @@ return {toCemModel, toCemModels, bindingForCube, isReferenceCube};
   const CUSTOM_DETECTION = singleDetection('entity', [63, 0], [0, 0, 1, 255], {mode: 'vertex_id', count: 1, index: 0}, {corner: 'yx'});
   const PROFILES = {
     armor_stand: {
-      name: 'Armor Stand', category: 'humanoid', targetType: 'entity', referenceRig: 'armor_stand', textureSize: [64, 64], versions: ['1.21.6'],
+      name: 'Armor Stand', category: 'humanoid', keywords: ['armor stand', '盔甲架'], targetType: 'entity', referenceRig: 'armor_stand', textureSize: [64, 64], versions: ['1.21.6'],
       detection: {
         channel: 'entity', pixel: [63, 0], color: [0, 0, 240, 255], hideUnmatched: true,
         branches: [
@@ -398,31 +398,31 @@ return {toCemModel, toCemModels, bindingForCube, isReferenceCube};
       }
     },
     pig: {
-      name: 'Pig', category: 'quadruped', targetType: 'entity', referenceRig: 'pig', textureSize: [64, 32],
+      name: 'Pig', category: 'quadruped', keywords: ['pig', '猪'], targetType: 'entity', referenceRig: 'pig', textureSize: [64, 32],
       detection: singleDetection('entity', [63, 0], [255, 0, 0, 255], {mode: 'vertex_id', count: 42, index: 3}, {anchor: 'head', reverse: true})
     },
     cold_pig: {
-      name: 'Cold Pig', category: 'quadruped', targetType: 'entity', referenceRig: 'pig', textureSize: [64, 64],
+      name: 'Cold Pig', category: 'quadruped', keywords: ['cold pig', '寒冷猪'], targetType: 'entity', referenceRig: 'pig', textureSize: [64, 64],
       detection: singleDetection('entity', [63, 0], [3, 0, 0, 255], {mode: 'vertex_id', count: 84, index: 3}, {anchor: 'head', reverse: true})
     },
     sheep: {
-      name: 'Sheep', category: 'quadruped', targetType: 'entity', referenceRig: 'pig', textureSize: [64, 32],
+      name: 'Sheep', category: 'quadruped', keywords: ['sheep', '羊'], targetType: 'entity', referenceRig: 'pig', textureSize: [64, 32],
       detection: singleDetection('entity', [63, 0], [2, 0, 0, 255], {mode: 'all'}, {anchor: 'body', size: 1.2})
     },
     arrow: {
-      name: 'Arrow', category: 'projectile', targetType: 'entity', referenceRig: 'arrow', textureSize: [32, 32],
+      name: 'Arrow', category: 'projectile', keywords: ['arrow', '箭'], targetType: 'entity', referenceRig: 'arrow', textureSize: [32, 32],
       detection: singleDetection('entity', [31, 0], [0, 0, 1, 255], {mode: 'vertex_id', count: 9, index: 0}, {anchor: 'shaft', reverse: true, corner: 'yx', size: 1.5, hideUnmatched: true})
     },
     elytra: {
-      name: 'Elytra / Wings', category: 'equipment', targetType: 'armor', referenceRig: 'elytra', textureSize: [64, 32],
+      name: 'Elytra / Wings', category: 'equipment', keywords: ['elytra', 'wings', '鞘翅'], targetType: 'armor', referenceRig: 'elytra', textureSize: [64, 32],
       detection: singleDetection('armor', [1, 0], [0, 0, 4, 255], {mode: 'vertex_id', count: 12, index: 5}, {anchor: 'body', reverse: true, size: 2, hideUnmatched: true})
     },
     player: {
-      name: 'Player (custom detection)', category: 'humanoid', targetType: 'entity', referenceRig: 'player', textureSize: [64, 64], expertDetection: true,
+      name: 'Player (custom detection)', category: 'humanoid', keywords: ['player', 'human', '玩家'], targetType: 'entity', referenceRig: 'player', textureSize: [64, 64], expertDetection: true,
       detection: CUSTOM_DETECTION
     },
     custom: {
-      name: 'Custom entity', category: 'custom', targetType: 'entity', referenceRig: 'none', textureSize: [64, 64], expertDetection: true,
+      name: 'Custom entity', category: 'custom', keywords: ['custom', '自定义'], targetType: 'entity', referenceRig: 'none', textureSize: [64, 64], expertDetection: true,
       detection: CUSTOM_DETECTION
     }
   };
@@ -458,13 +458,29 @@ return {toCemModel, toCemModels, bindingForCube, isReferenceCube};
     return Object.fromEntries(profilesFor(version).map(profile => [profile.id, profile.name]));
   }
 
+  function categoryOptionsFor(version = '1.21.6') {
+    const labels = {humanoid: 'Humanoid / 人形', quadruped: 'Quadruped / 四足', projectile: 'Projectile / 投射物', equipment: 'Equipment / 装备', custom: 'Custom / 自定义'};
+    const categories = new Set(profilesFor(version).map(profile => profile.category || 'custom'));
+    return Object.fromEntries([...categories].sort().map(category => [category, labels[category] || category]));
+  }
+
+  function searchProfiles(query = '', version = '1.21.6', category = 'all') {
+    const normalized = String(query).trim().toLocaleLowerCase();
+    return profilesFor(version)
+      .filter(profile => category === 'all' || (profile.category || 'custom') === category)
+      .filter(profile => !normalized || [profile.id, profile.name, ...(profile.keywords || [])].join(' ').toLocaleLowerCase().includes(normalized))
+      .sort((left, right) => left.name.localeCompare(right.name));
+  }
+
   return {
     SUPPORTED_VERSIONS: SUPPORTED_VERSIONS.slice(),
     ENTITY_PROFILES: clone(PROFILES),
     profileFor,
     profilesFor,
     detectionFor,
-    optionsFor
+    optionsFor,
+    categoryOptionsFor,
+    searchProfiles
   };
 }));
 
@@ -940,7 +956,7 @@ SOFTWARE.
   const {REFERENCE_PREFIX, REFERENCE_CUBE_PREFIX, anchorsFor, guidesFor, isReferenceGroup} = CemSReferenceRigs;
   const {slugify, buildPackFiles, mergePackFiles} = CemSPackBuilder;
   const {loadRuntimeFiles} = CemSRuntime;
-  const {profileFor, optionsFor} = CemSEntityDatabase;
+  const {profileFor, optionsFor, categoryOptionsFor, searchProfiles} = CemSEntityDatabase;
   let exportAction;
   let exportDialog;
   let settingsAction;
@@ -999,6 +1015,55 @@ SOFTWARE.
     const buildButton = studioPanel.node.querySelector('[data-cem-action="build"]');
     if (exportButton) exportButton.disabled = state.modelCount === 0;
     if (buildButton) buildButton.disabled = state.modelCount === 0;
+    const entitySelect = studioPanel.node.querySelector('[data-cem-entity="profile"]');
+    if (entitySelect && entitySelect.dataset.version !== settings.cemVersion) populateStudioEntityBrowser();
+  }
+
+  function populateStudioEntityBrowser() {
+    if (!studioPanel?.node) return;
+    const settings = getSettings();
+    const categorySelect = studioPanel.node.querySelector('[data-cem-entity="category"]');
+    const searchInput = studioPanel.node.querySelector('[data-cem-entity="search"]');
+    const profileSelect = studioPanel.node.querySelector('[data-cem-entity="profile"]');
+    if (!categorySelect || !searchInput || !profileSelect) return;
+    if (categorySelect.dataset.version !== settings.cemVersion) {
+      const categories = categoryOptionsFor(settings.cemVersion);
+      categorySelect.innerHTML = '<option value="all">全部分类</option>' + Object.entries(categories).map(([id, label]) => `<option value="${id}">${label}</option>`).join('');
+      categorySelect.dataset.version = settings.cemVersion;
+      categorySelect.value = 'all';
+    }
+    const matches = searchProfiles(searchInput.value, settings.cemVersion, categorySelect.value || 'all');
+    profileSelect.innerHTML = matches.map(profile => `<option value="${profile.id}">${profile.name}</option>`).join('');
+    profileSelect.dataset.version = settings.cemVersion;
+    if (matches.some(profile => profile.id === settings.targetEntity)) profileSelect.value = settings.targetEntity;
+  }
+
+  function applyStudioEntitySelection() {
+    const select = studioPanel?.node?.querySelector('[data-cem-entity="profile"]');
+    const profileId = select?.value;
+    if (!profileId) {
+      Blockbench.showQuickMessage('CEM-S Studio: no matching entity profile.');
+      return;
+    }
+    const settings = getSettings();
+    if (profileId === settings.targetEntity) return;
+    const profile = profileFor(profileId, settings.cemVersion);
+    const reference = settings.reference || {};
+    if (reference.root && reference.rig !== profile.referenceRig) {
+      const root = findGroupByReference(reference.root);
+      const hasBindings = Object.keys(reference.bindings || {}).length > 0;
+      const hasAuthorElements = root && [...(globalThis.Cube?.all || []), ...(globalThis.Mesh?.all || [])].some(element => isInsideGroup(element, root) && !isReferenceCube(element, reference));
+      if (hasBindings || hasAuthorElements) {
+        Blockbench.showMessageBox({title: 'CEM-S Studio entity switch', message: 'Move or unbind author model parts from the current reference model before switching entity type.'});
+        return;
+      }
+      root?.remove?.();
+      Project.cem_studio = Object.assign({}, settings, {reference: {rig: 'none', root: null, anchors: {}, bindings: {}, guides: []}});
+    }
+    setSettings({entity_profile: profileId, minecraft_version: settings.cemVersion});
+    if (profile.referenceRig !== 'none' && !getSettings().reference?.root) addReferenceRig(profile.referenceRig);
+    populateStudioEntityBrowser();
+    Blockbench.showQuickMessage(`CEM-S Studio: switched to ${profile.name}.`);
   }
 
   function installStudioPanel() {
@@ -1015,6 +1080,12 @@ SOFTWARE.
         <div data-cem-state="reference" style="margin-bottom: 4px"></div>
         <div data-cem-state="binding" style="margin-bottom: 8px"></div>
         <div data-cem-state="next" style="margin-bottom: 8px; color: var(--color-bright)"></div>
+        <div style="display: grid; gap: 4px; margin-bottom: 8px">
+          <input data-cem-entity="search" type="search" placeholder="搜索实体" aria-label="搜索实体">
+          <select data-cem-entity="category" aria-label="实体分类"></select>
+          <select data-cem-entity="profile" aria-label="实体类型"></select>
+          <button data-cem-action="apply-entity" title="应用实体类型"><i class="material-icons">check</i> 应用实体</button>
+        </div>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px">
           <button data-cem-action="settings" title="项目设置"><i class="material-icons">settings</i> 设置</button>
           <button data-cem-action="reference" title="添加参考模型"><i class="material-icons">accessibility</i> 参考模型</button>
@@ -1023,9 +1094,13 @@ SOFTWARE.
         </div>
       </div>`;
     studioPanel.node.querySelector('[data-cem-action="settings"]').addEventListener('click', () => showProjectSettings(false));
+    studioPanel.node.querySelector('[data-cem-entity="search"]').addEventListener('input', populateStudioEntityBrowser);
+    studioPanel.node.querySelector('[data-cem-entity="category"]').addEventListener('change', populateStudioEntityBrowser);
+    studioPanel.node.querySelector('[data-cem-action="apply-entity"]').addEventListener('click', applyStudioEntitySelection);
     studioPanel.node.querySelector('[data-cem-action="reference"]').addEventListener('click', addConfiguredReference);
     studioPanel.node.querySelector('[data-cem-action="export"]').addEventListener('click', exportCurrentProject);
     studioPanel.node.querySelector('[data-cem-action="build"]').addEventListener('click', () => buildResourcePack('new'));
+    populateStudioEntityBrowser();
     refreshStudioPanel();
   }
 
@@ -1058,7 +1133,7 @@ SOFTWARE.
         size: Number(value('cem_size', currentBranch.size)), modelScale: currentBranch.modelScale || 8
       }],
       hideUnmatched: result.hide_unmatched === undefined ? currentDetection.hideUnmatched : !!result.hide_unmatched
-    } : detectionForPreset(presetName);
+    } : detectionForPreset(presetName, version);
     const next = createProject({
       ...current,
       name: value('project_name', current.name),
