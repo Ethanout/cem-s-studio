@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {SUPPORTED_CEM_VERSIONS, createProject, createWorkspace, serializeProject, parseProject, detectionForPreset} = require('../src/cemst.js');
-const {buildPackFiles, mergePackFiles, upsertManagedSection} = require('../src/pack-builder.js');
+const {buildPackFiles, buildWorkspacePackFiles, mergePackFiles, upsertManagedSection} = require('../src/pack-builder.js');
 const {RUNTIME_PROFILES, loadRuntimeFiles, sourcesFor} = require('../src/cem-runtime.js');
 
 test('creates a versioned CEM-S Studio project with usable defaults', () => {
@@ -50,6 +50,29 @@ test('rejects duplicate model IDs inside a cemst workspace', () => {
   ], {modelIds: ['one', 'two']});
   workspace.workspace.models[1].project.modelId = workspace.workspace.models[0].project.modelId;
   assert.throws(() => serializeProject(workspace), /duplicate workspace modelId/);
+});
+
+test('builds one resource pack from all workspace models and writes model manifests', () => {
+  const workspace = createWorkspace([
+    createProject({name: 'Pig Ears', modelId: 7, targetEntity: 'pig'}),
+    createProject({name: 'Elytra Pack', modelId: 8, targetEntity: 'elytra', targetType: 'armor', detection: {preset: 'elytra'}})
+  ], {modelIds: ['pig', 'elytra']});
+  const files = buildWorkspacePackFiles(workspace, {pig: 'case 7: { }', elytra: 'case 8: { }'});
+  assert.match(files['assets/minecraft/shaders/include/cem_user/models.glsl'], /CEM-S Studio BEGIN 7/);
+  assert.match(files['assets/minecraft/shaders/include/cem_user/models.glsl'], /CEM-S Studio BEGIN 8/);
+  assert.match(files['assets/minecraft/shaders/include/cem_user/detection.glsl'], /CEM-S Studio BEGIN 7/);
+  assert.match(files['assets/minecraft/shaders/include/cem_user/detection.glsl'], /CEM-S Studio BEGIN 8/);
+  assert.match(files['cem-studio/workspace.json'], /"activeModel"/);
+  assert.match(files['cem-studio/models/pig.json'], /Pig Ears/);
+  assert.match(files['cem-studio/models/elytra.json'], /Elytra Pack/);
+});
+
+test('rejects workspace models targeting different Minecraft runtimes', () => {
+  const workspace = createWorkspace([
+    createProject({name: 'Legacy', modelId: 1, cemVersion: '1.21.6'}),
+    createProject({name: 'Modern', modelId: 2, cemVersion: '1.21.11'})
+  ], {modelIds: ['legacy', 'modern']});
+  assert.throws(() => buildWorkspacePackFiles(workspace, {legacy: 'case 1: {}', modern: 'case 2: {}'}), /same Minecraft runtime/);
 });
 
 test('selects pack formats for Minecraft 1.21.11 and 26.1+', () => {

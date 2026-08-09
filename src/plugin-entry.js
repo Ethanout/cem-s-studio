@@ -3,7 +3,7 @@
   const {toCemModels, isReferenceCube} = CemSBlockbenchAdapter;
   const {CURRENT_VERSION, SUPPORTED_CEM_VERSIONS, createProject, createWorkspace, parseProject, serializeProject, detectionForPreset} = CemSProject;
   const {REFERENCE_PREFIX, REFERENCE_CUBE_PREFIX, anchorsFor, guidesFor, isReferenceGroup} = CemSReferenceRigs;
-  const {slugify, buildPackFiles, mergePackFiles} = CemSPackBuilder;
+  const {slugify, buildPackFiles, buildWorkspacePackFiles, mergePackFiles} = CemSPackBuilder;
   const {loadRuntimeFiles} = CemSRuntime;
   const {profileFor, optionsFor, categoryOptionsFor, searchProfiles} = CemSEntityDatabase;
   const {collectReferencedTextures, renderTextureAtlas} = CemSTextureAtlas;
@@ -932,31 +932,32 @@
     return existing;
   }
 
+  function exportCurrentPackModel(document) {
+    autoBindAttachments();
+    const elements = [...(Cube.all || []), ...(globalThis.Mesh?.all || [])];
+    const referencedTextures = collectReferencedTextures(elements, Texture.all || [], {isReference: element => isReferenceCube(element, document.project.reference)});
+    let textureAtlas = null;
+    let textureFile = null;
+    if (referencedTextures.length) {
+      const profile = profileFor(document.project.targetEntity, document.project.cemVersion);
+      const texturePath = document.project.texturePath || profile.texturePath;
+      if (!texturePath) throw new Error(`${profile.name} uses a dynamic or custom Minecraft texture. Set Target texture path in Advanced Settings before building.`);
+      const expected = profile.textureSize || [];
+      const primaryTexture = referencedTextures.find(texture => texture.width === expected[0] && texture.height === expected[1]);
+      if (!primaryTexture) throw new Error(`${profile.name} needs one referenced ${expected[0]}x${expected[1]} base entity texture before its additional Blockbench textures can be packed.`);
+      textureAtlas = renderTextureAtlas(referencedTextures, {primaryTexture, marker: {pixel: document.project.detection.pixel, color: document.project.detection.color}});
+      textureFile = {path: texturePath, content: textureAtlas.png, baseSize: expected.slice()};
+    }
+    const entries = toCemModels(document.project.name, elements, {reference: document.project.reference, branches: document.project.detection.branches, textureAtlas});
+    const exported = entries.length === 1
+      ? exportModel(entries[0].model, document.project.modelId, document.project.cemVersion, {modelScale: entries[0].branch.modelScale})
+      : exportModels(entries, document.project.modelId, document.project.cemVersion);
+    return {glsl: exported.glsl, textureFile};
+  }
+
   async function buildResourcePack(mode) {
     try {
-      autoBindAttachments();
       const document = currentDocument();
-      const elements = [...(Cube.all || []), ...(globalThis.Mesh?.all || [])];
-      const referencedTextures = collectReferencedTextures(elements, Texture.all || [], {isReference: element => isReferenceCube(element, document.project.reference)});
-      let textureAtlas = null;
-      let textureFile = null;
-      if (referencedTextures.length) {
-        const profile = profileFor(document.project.targetEntity, document.project.cemVersion);
-        const texturePath = document.project.texturePath || profile.texturePath;
-        if (!texturePath) throw new Error(`${profile.name} uses a dynamic or custom Minecraft texture. Set Target texture path in Advanced Settings before building.`);
-        const expected = profile.textureSize || [];
-        const primaryTexture = referencedTextures.find(texture => texture.width === expected[0] && texture.height === expected[1]);
-        if (!primaryTexture) throw new Error(`${profile.name} needs one referenced ${expected[0]}x${expected[1]} base entity texture before its additional Blockbench textures can be packed.`);
-        textureAtlas = renderTextureAtlas(referencedTextures, {
-          primaryTexture,
-          marker: {pixel: document.project.detection.pixel, color: document.project.detection.color}
-        });
-        textureFile = {path: texturePath, content: textureAtlas.png, baseSize: expected.slice()};
-      }
-      const entries = toCemModels(document.project.name, elements, {reference: document.project.reference, branches: document.project.detection.branches, textureAtlas});
-      const exported = entries.length === 1
-        ? exportModel(entries[0].model, document.project.modelId, document.project.cemVersion, {modelScale: entries[0].branch.modelScale})
-        : exportModels(entries, document.project.modelId, document.project.cemVersion);
       const selected = Blockbench.pickDirectory({title: mode === 'new' ? 'Choose where to create the resource pack' : 'Choose existing CEM-S resource pack folder', resource_id: 'cem_s_studio_pack'});
       if (!selected) return;
       const path = require('path');
@@ -966,7 +967,29 @@
         throw new Error(`The folder "${root}" is not empty. Choose another location or use Update an existing CEM-S pack.`);
       }
       const runtimeFiles = mode === 'new' ? await loadRuntimeFiles(document.project.cemVersion) : {};
-      const generated = buildPackFiles(document, exported.glsl, {runtimeFiles, textureFile});
+      const workspace = document.workspace;
+      const modelGlslById = {};
+      const textureFiles = {};
+      const originalActive = workspace?.activeModel;
+      const models = workspace?.models?.length ? workspace.models : [{id: '__current', project: document.project, blockbench: document.blockbench}];
+      try {
+        for (const model of models) {
+          if (workspace && model.id !== originalActive) {
+            const loaded = parseProject({format: 'cemst', formatVersion: CURRENT_VERSION, project: model.project, blockbench: model.blockbench});
+            baseProjectCodec.parse(loaded.blockbench, Project.save_path || 'cem_s_studio_workspace.bbmodel');
+            Project.cem_studio = loaded.project;
+          }
+          const current = currentSingleDocument();
+          const exported = exportCurrentPackModel(current);
+          modelGlslById[model.id] = exported.glsl;
+          if (exported.textureFile) textureFiles[model.id] = exported.textureFile;
+        }
+      } finally {
+        if (workspace && originalActive && workspace.models.find(model => model.id === originalActive)) switchWorkspaceModel(originalActive);
+      }
+      const generated = workspace?.models?.length
+        ? buildWorkspacePackFiles(document, modelGlslById, {runtimeFiles, textureFiles})
+        : buildPackFiles(document, modelGlslById['__current'], {runtimeFiles, textureFile: textureFiles['__current']});
       const aggregatorFiles = ['assets/minecraft/shaders/include/cem_user/models.glsl', 'assets/minecraft/shaders/include/cem_user/detection.glsl', 'pack.mcmeta'];
       const files = mode === 'new' ? generated : mergePackFiles(readExistingFiles(root, aggregatorFiles, fs), generated, document);
       writeFiles(root, files, fs);
