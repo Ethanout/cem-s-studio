@@ -23,6 +23,8 @@ test('registers the CEM-S Studio project format and resource-pack workflow', () 
   assert.match(source, /optionsFor/);
   assert.match(source, /withoutReferenceGuides/);
   assert.match(source, /export: false/);
+  assert.match(source, /meshes: true/);
+  assert.match(source, /globalThis\.Mesh\?\.all/);
 });
 
 test('keeps the standalone CEM-S export action inside CEM-S Studio projects', () => {

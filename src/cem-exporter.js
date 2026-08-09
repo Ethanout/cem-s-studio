@@ -28,7 +28,13 @@
     if (!model || typeof model.name !== 'string' || !model.name.trim()) throw new Error('model name is required');
     if (!Array.isArray(model.parts)) throw new Error('parts must be an array');
     model.parts.forEach((part, index) => {
-      if (!part || part.type !== 'cube') throw new Error(`part ${index}: unsupported part type`);
+      if (!part || !['cube', 'square'].includes(part.type)) throw new Error(`part ${index}: unsupported part type`);
+      if (part.type === 'square') {
+        if (!Array.isArray(part.points) || part.points.length !== 3) throw new Error(`part ${index} points must contain three vertices`);
+        part.points.forEach((point, pointIndex) => assertVec3(point, `part ${index} point ${pointIndex}`));
+        if (!Array.isArray(part.uv) || part.uv.length !== 4 || part.uv.some(value => !Number.isFinite(value))) throw new Error(`part ${index} uv must be a finite vec4`);
+        return;
+      }
       assertVec3(part.origin, `part ${index} origin`);
       assertVec3(part.size, `part ${index} size`);
       if (part.rotation) assertVec3(part.rotation, `part ${index} rotation`);
@@ -36,7 +42,7 @@
       if (part.rotationMatrix && (!Array.isArray(part.rotationMatrix) || part.rotationMatrix.length !== 9 || part.rotationMatrix.some((value) => !Number.isFinite(value)))) {
         throw new Error(`part ${index} rotationMatrix must contain 9 finite numbers`);
       }
-      if (part.faces && (!Array.isArray(part.faces) || part.faces.some((face) => !Array.isArray(face) || face.length !== 4 || face.some((item) => !Number.isFinite(item))))) {
+      if (part.faces && (!Array.isArray(part.faces) || part.faces.some((face) => face !== undefined && (!Array.isArray(face) || face.length !== 4 || face.some((item) => !Number.isFinite(item)))))) {
         throw new Error(`part ${index} faces must contain vec4 values`);
       }
     });
@@ -56,6 +62,7 @@
   }
 
   function emitPart(part) {
+    if (part.type === 'square') return `    ADD_SQUARE(${part.points.map(formatVec3).join(', ')}, ${formatVec4(part.uv)})`;
     const faces = Array.from({length: 6}, (_, index) => part.faces && part.faces[index] ? formatVec4(part.faces[index]) : EMPTY_FACE).join(', ');
     if (!part.rotationMatrix && (!part.rotation || part.rotation.every((angle) => angle === 0))) {
       return `    ADD_BOX(${formatVec3(part.origin)}, ${formatVec3(part.size)}, ${faces})`;

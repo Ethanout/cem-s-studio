@@ -23,6 +23,43 @@ test('uses supplied Blockbench face UV rectangles', () => {
   assert.match(result.glsl, /vec4\(1\.0, 2\.0, 3\.0, 4\.0\), vec4\(5\.0, 6\.0, 7\.0, 8\.0\)/);
 });
 
+test('converts rectangular Blockbench mesh faces to ADD_SQUARE', () => {
+  const mesh = {
+    name: 'cape',
+    vertices: {a: [0, 0, 0], b: [4, 0, 0], c: [0, 6, 0], d: [4, 6, 0]},
+    faces: {front: {vertices: ['d', 'b', 'a', 'c'], uv: {a: [8, 16], b: [12, 16], c: [8, 22], d: [12, 22]}}}
+  };
+  const model = toCemModel('cape', [mesh]);
+  assert.deepEqual(model.parts[0], {
+    name: 'cape/front', type: 'square',
+    points: [[0, 0, 0], [4, 0, 0], [0, 6, 0]],
+    uv: [8, 16, 4, 6]
+  });
+  assert.match(exportModel(model).glsl, /ADD_SQUARE\(vec3\(0\.0, 0\.0, 0\.0\), vec3\(4\.0, 0\.0, 0\.0\), vec3\(0\.0, 6\.0, 0\.0\), vec4\(8\.0, 16\.0, 4\.0, 6\.0\)\)/);
+});
+
+test('preserves rectangular UV rotation through mesh vertex mapping', () => {
+  const mesh = {
+    name: 'rotated_uv',
+    vertices: {a: [0, 0, 0], b: [2, 0, 0], c: [0, 3, 0], d: [2, 3, 0]},
+    faces: {front: {vertices: ['a', 'b', 'd', 'c'], uv: {a: [4, 8], b: [4, 10], c: [7, 8], d: [7, 10]}}}
+  };
+  const square = toCemModel('rotated', [mesh]).parts[0];
+  assert.deepEqual(square.points, [[0, 0, 0], [0, 3, 0], [2, 0, 0]]);
+  assert.deepEqual(square.uv, [4, 8, 3, 2]);
+});
+
+test('rejects mesh faces that ADD_SQUARE cannot represent', () => {
+  const triangle = {name: 'triangle', vertices: {a: [0, 0, 0], b: [1, 0, 0], c: [0, 1, 0]}, faces: {front: {vertices: ['a', 'b', 'c'], uv: {a: [0, 0], b: [1, 0], c: [0, 1]}}}};
+  assert.throws(() => toCemModel('triangle', [triangle]), /must have four vertices/);
+  const warped = {
+    name: 'warped',
+    vertices: {a: [0, 0, 0], b: [2, 0, 0], c: [0, 2, 0], d: [3, 2, 0]},
+    faces: {front: {vertices: ['a', 'b', 'd', 'c'], uv: {a: [0, 0], b: [2, 0], c: [0, 2], d: [2, 2]}}}
+  };
+  assert.throws(() => toCemModel('warped', [warped]), /must be a parallelogram/);
+});
+
 test('emits rotated cubes with a rotation matrix and pivot', () => {
   const result = exportModel({name: 'demo', parts: [{name: 'ear', type: 'cube', origin: [1, 2, 3], size: [4, 1, 2], rotation: [0, 25, 0], pivot: [1, 2, 3]}]});
   assert.match(result.glsl, /ADD_BOX_ROTATE/);
@@ -97,11 +134,20 @@ test('supports cubes inside rotated Blockbench groups', () => {
   assert.equal(model.parts[0].rotationMatrix.length, 9);
 });
 
-test('rejects unsupported rotated or disabled Blockbench faces', () => {
+test('exports disabled faces and 180-degree UV rotation', () => {
+  const cube = {from: [0, 0, 0], to: [1, 1, 1], faces: {down: {uv: [0, 0, 4, 6], rotation: 180}, up: {uv: [0, 0, 4, 6], enabled: false}}};
+  const model = toCemModel('pig', [cube]);
+  assert.deepEqual(model.parts[0].faces[0], [4, 6, -4, -6]);
+  assert.equal(model.parts[0].faces[1], undefined);
+  const glsl = exportModel(model).glsl;
+  assert.match(glsl, /vec4\(4\.0, 6\.0, -4\.0, -6\.0\), vec4\(0\.0\)/);
+});
+
+test('rejects Cube UV rotations ADD_BOX cannot represent', () => {
   const cube = {from: [0, 0, 0], to: [1, 1, 1], faces: {down: {uv: [0, 0, 1, 1], rotation: 90}}};
-  assert.throws(() => toCemModel('pig', [cube]), /rotated face "down"/);
-  cube.faces.down = {uv: [0, 0, 1, 1], enabled: false};
-  assert.throws(() => toCemModel('pig', [cube]), /disabled face "down"/);
+  assert.throws(() => toCemModel('pig', [cube]), /90-degree UV rotation/);
+  cube.faces.down.rotation = 270;
+  assert.throws(() => toCemModel('pig', [cube]), /270-degree UV rotation/);
 });
 
 test('converts multi-axis cube rotation to a rotation matrix', () => {
@@ -118,7 +164,15 @@ test('bakes a rotated parent group into the cube transform', () => {
   assert.match(exportModel(model).glsl, /ADD_BOX_ROTATE[\s\S]*mat3\(/);
 });
 
-test('rejects non-uniform parent scale', () => {
-  const group = {name: 'head', origin: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 2, 1], parent: null};
-  assert.throws(() => toCemModel('pig', [{from: [0, 0, 0], to: [1, 1, 1], parent: group}]), /non-uniform scale/);
+test('bakes non-uniform parent scale into cube geometry', () => {
+  const group = {name: 'head', origin: [0, 0, 0], rotation: [0, 90, 0], scale: [2, 3, 4], parent: null};
+  const model = toCemModel('pig', [{from: [-1, -1, -1], to: [1, 1, 1], parent: group}]);
+  assert.deepEqual(model.parts[0].size, [2, 3, 4]);
+  assert.equal(model.parts[0].rotationMatrix.length, 9);
+});
+
+test('rejects nested transforms that introduce shear', () => {
+  const scaled = {name: 'scaled', origin: [0, 0, 0], rotation: [0, 0, 0], scale: [2, 1, 1], parent: null};
+  const rotated = {name: 'rotated', origin: [0, 0, 0], rotation: [0, 0, 45], parent: scaled};
+  assert.throws(() => toCemModel('pig', [{name: 'sheared', from: [-1, -1, -1], to: [1, 1, 1], parent: rotated}]), /sheared transform/);
 });

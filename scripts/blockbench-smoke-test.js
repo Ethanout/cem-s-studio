@@ -68,6 +68,23 @@ async function connect() {
   };
 }
 
+async function loadPluginWhenReady(client, pluginPath) {
+  let lastMessage = 'Blockbench plugin API did not become ready';
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const load = await client.call('Runtime.evaluate', {
+      expression: `(async () => { try { await new Plugin('cem_s_studio').loadFromFile({path: ${JSON.stringify(pluginPath)}, name: ${JSON.stringify(pluginPath)}, content: ''}, false); return {ok: true}; } catch (error) { return {ok: false, message: error.stack || error.message}; } })()`,
+      returnByValue: true,
+      awaitPromise: true
+    });
+    const value = load.result.value;
+    if (value?.ok) return;
+    lastMessage = value?.message || lastMessage;
+    if (!/Illegal constructor|not defined|not a constructor/i.test(lastMessage)) break;
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+  throw new Error(`Plugin load failed: ${lastMessage}`);
+}
+
 async function main() {
   if (!(await endpointReady())) await launchInstalledBlockbench();
   const client = await connect();
@@ -84,13 +101,7 @@ async function main() {
     await client.call('Log.enable');
     console.log('Blockbench smoke: loading plugin');
     const pluginPath = path.join(root, 'cem_s_studio.js');
-    const load = await client.call('Runtime.evaluate', {
-      expression: `(async () => { try { await new Plugin('cem_s_studio').loadFromFile({path: ${JSON.stringify(pluginPath)}, name: ${JSON.stringify(pluginPath)}, content: ''}, false); return {ok: true}; } catch (error) { return {ok: false, message: error.stack || error.message}; } })()`,
-      returnByValue: true,
-      awaitPromise: true
-    });
-    const loadValue = load.result.value;
-    if (!loadValue?.ok) throw new Error(`Plugin load failed: ${loadValue?.message || 'unknown error'}`);
+    await loadPluginWhenReady(client, pluginPath);
     const bundleProbe = await client.call('Runtime.evaluate', {
       expression: `(async () => { const versions = ['1.21.6', '1.21.11', '26.1+']; const loaded = {}; for (const version of versions) { const files = await CemSRuntime.loadRuntimeFiles(version); loaded[version] = {fileCount: Object.keys(files).length, hasEntityShader: !!files['assets/minecraft/shaders/core/entity.fsh']}; } return {runtimeVersionCount: Object.keys(globalThis.CemSBundledRuntime || {}).length, loaded}; })()`,
       returnByValue: true,
@@ -157,6 +168,20 @@ async function main() {
         await new Promise(resolve => setTimeout(resolve, 0));
         const realtimeUnbound = !Project.cem_studio.reference.bindings[authorCube.uuid];
 
+        globalThis.__cemSmokeStage = 'square_mesh';
+        const squareMesh = new Mesh({name: 'Smoke Square', vertices: {}, faces: {}}).init();
+        const squareVertices = squareMesh.addVertices([0, 0, 0], [4, 0, 0], [4, 4, 0], [0, 4, 0]);
+        const squareFace = new MeshFace(squareMesh, {vertices: squareVertices});
+        squareFace.uv[squareVertices[0]] = [0, 0];
+        squareFace.uv[squareVertices[1]] = [4, 0];
+        squareFace.uv[squareVertices[2]] = [4, 4];
+        squareFace.uv[squareVertices[3]] = [0, 4];
+        squareMesh.addFaces(squareFace);
+        const squareModel = CemSBlockbenchAdapter.toCemModel('smoke_square', [squareMesh]);
+        const meshSquareExported = squareModel.parts.length === 1 && squareModel.parts[0].type === 'square';
+        const meshSquareState = {vertexCount: Object.keys(squareMesh.vertices).length, faceCount: Object.keys(squareMesh.faces).length, parts: squareModel.parts.map(part => ({name: part.name, type: part.type}))};
+        squareMesh.remove();
+
         const studioMenu = MenuBar.menus.cem_s_studio;
         return {
           ok: true,
@@ -164,6 +189,8 @@ async function main() {
           studioMenuName: studioMenu?.name,
           studioMenuLabel: studioMenu?.label?.textContent,
           formatSelected: Format === format,
+          meshFormatEnabled: !!format.meshes,
+          meshApiAvailable: typeof Mesh === 'function' && typeof MeshFace === 'function',
           codecRegistered: !!Codecs.cemst,
           actions: {
             save: !!BarItems.save_cemst_project,
@@ -187,6 +214,8 @@ async function main() {
           referenceState,
           realtimeBound,
           realtimeUnbound,
+          meshSquareExported,
+          meshSquareState,
           settingsFields,
           advancedSettingsFields
         };
@@ -201,7 +230,7 @@ async function main() {
     if (probe.exceptionDetails) exceptions.push(probe.exceptionDetails.text);
     const result = probe.result.value;
     if (!result?.ok) throw new Error(result?.message || exceptions.join('\n') || 'Blockbench probe failed');
-    const required = [result.blockbenchVersion === '5.1.6', result.studioMenuName === 'CEM-S Studio', result.studioMenuLabel === 'CEM-S Studio', result.formatSelected, result.codecRegistered, result.actions.save, result.actions.settings, result.actions.advancedDetection, result.actions.buildPack, result.actions.updatePack, result.actions.addReference, result.actions.importReference, result.actions.registerReference, result.actions.bindReference, result.rawFormat === 'cemst', result.parsedFormat === 'cemst', result.formatVersion === 2, result.projectName === 'Smoke Pig', result.projectHasSettings, result.autoReferenceRig === 'pig', result.initialSetupFields.length === 5, result.initialSetupFields.includes('entity_profile'), result.cubeCountAfterOpen === 7, result.referenceState?.guideCount === 6, result.referenceState?.allVisible, result.referenceState?.allExcludedFromExport, result.referenceState?.allUntextured, result.referenceState?.referenceTextureAbsent, result.realtimeBound, result.realtimeUnbound, result.settingsFields.length === 5, result.settingsFields.includes('minecraft_version'), result.settingsFields.includes('model_id'), result.settingsFields.includes('entity_profile'), result.advancedSettingsFields.includes('render_target'), result.advancedSettingsFields.includes('marker_x'), result.advancedSettingsFields.includes('face_count'), result.advancedSettingsFields.includes('face_number')];
+    const required = [result.blockbenchVersion === '5.1.6', result.studioMenuName === 'CEM-S Studio', result.studioMenuLabel === 'CEM-S Studio', result.formatSelected, result.meshFormatEnabled, result.meshApiAvailable, result.meshSquareExported, result.codecRegistered, result.actions.save, result.actions.settings, result.actions.advancedDetection, result.actions.buildPack, result.actions.updatePack, result.actions.addReference, result.actions.importReference, result.actions.registerReference, result.actions.bindReference, result.rawFormat === 'cemst', result.parsedFormat === 'cemst', result.formatVersion === 2, result.projectName === 'Smoke Pig', result.projectHasSettings, result.autoReferenceRig === 'pig', result.initialSetupFields.length === 5, result.initialSetupFields.includes('entity_profile'), result.cubeCountAfterOpen === 7, result.referenceState?.guideCount === 6, result.referenceState?.allVisible, result.referenceState?.allExcludedFromExport, result.referenceState?.allUntextured, result.referenceState?.referenceTextureAbsent, result.realtimeBound, result.realtimeUnbound, result.settingsFields.length === 5, result.settingsFields.includes('minecraft_version'), result.settingsFields.includes('model_id'), result.settingsFields.includes('entity_profile'), result.advancedSettingsFields.includes('render_target'), result.advancedSettingsFields.includes('marker_x'), result.advancedSettingsFields.includes('face_count'), result.advancedSettingsFields.includes('face_number')];
     if (required.some(value => !value)) throw new Error(`Blockbench probe returned incomplete state: ${JSON.stringify(result)}`);
     const screenshot = await client.call('Page.captureScreenshot', {format: 'png'});
     const screenshotPath = path.join(os.tmpdir(), 'cem-s-studio-blockbench-smoke.png');

@@ -137,7 +137,7 @@
     if (!root) return;
     const anchorByGroup = new Map(Object.entries(reference.anchors).map(([name, id]) => [id, name]));
     const bindings = {};
-    const candidates = [...(Group.all || []), ...(Cube.all || [])];
+    const candidates = [...(Group.all || []), ...(Cube.all || []), ...(globalThis.Mesh?.all || [])];
     for (const element of candidates) {
       if (element === root || isReferenceGroup(element) || isReferenceCube(element, reference)) continue;
       const parent = element.parent;
@@ -411,9 +411,9 @@
 
   function exportCurrentProject() {
     autoBindAttachments();
-    const cubes = (Cube.all || []).filter(cube => !isReferenceCube(cube, getSettings().reference));
-    if (!cubes.length) {
-      Blockbench.showQuickMessage('CEM-S Studio: add at least one cube before exporting.');
+    const elements = [...(Cube.all || []), ...(globalThis.Mesh?.all || [])].filter(element => !isReferenceCube(element, getSettings().reference));
+    if (!elements.length) {
+      Blockbench.showQuickMessage('CEM-S Studio: add at least one cube or square mesh before exporting.');
       return;
     }
     const settings = getSettings();
@@ -425,7 +425,7 @@
         exportDialog.hide();
         try {
           const document = currentDocument();
-          const entries = toCemModels(document.project.name, cubes, {reference: document.project.reference, branches: document.project.detection.branches});
+          const entries = toCemModels(document.project.name, elements, {reference: document.project.reference, branches: document.project.detection.branches});
           const exported = entries.length === 1
             ? exportModel(entries[0].model, Number(result.model_id), document.project.cemVersion, {modelScale: entries[0].branch.modelScale})
             : exportModels(entries, Number(result.model_id), document.project.cemVersion);
@@ -469,7 +469,8 @@
     try {
       autoBindAttachments();
       const document = currentDocument();
-      const entries = toCemModels(document.project.name, Cube.all || [], {reference: document.project.reference, branches: document.project.detection.branches});
+      const elements = [...(Cube.all || []), ...(globalThis.Mesh?.all || [])];
+      const entries = toCemModels(document.project.name, elements, {reference: document.project.reference, branches: document.project.detection.branches});
       const exported = entries.length === 1
         ? exportModel(entries[0].model, document.project.modelId, document.project.cemVersion, {modelScale: entries[0].branch.modelScale})
         : exportModels(entries, document.project.modelId, document.project.cemVersion);
@@ -526,6 +527,7 @@
       per_texture_uv_size: true,
       bone_rig: true,
       rotate_cubes: true,
+      meshes: true,
       centered_grid: true,
       codec: projectCodec,
       onSetup() {
@@ -567,7 +569,7 @@
     author: 'CEM-S Studio contributors',
     description: 'A Blockbench project format and resource-pack builder for CEM-S on Minecraft 1.21.6, 1.21.11, and 26.1+.',
     icon: 'extension',
-    version: '0.6.0',
+    version: '0.7.0',
     min_version: '4.12.0',
     variant: 'desktop',
     onload() {
