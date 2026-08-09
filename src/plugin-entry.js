@@ -26,6 +26,7 @@
   let registerReferenceAction;
   let bindReferenceAction;
   let renderSettingsAction;
+  let resetAttachmentAction;
   const renderProperties = [];
   let originalGenerateTemplate;
   let originalGenerateColorMapTemplate;
@@ -165,6 +166,7 @@
           <button data-cem-action="settings" title="项目设置"><i class="material-icons">settings</i> 设置</button>
           <button data-cem-action="reference" title="添加参考模型"><i class="material-icons">accessibility</i> 参考模型</button>
           <button data-cem-action="render" title="设置选中部件的渲染属性"><i class="material-icons">palette</i> 渲染属性</button>
+          <button data-cem-action="reset-anchor" title="将选中挂件重置到当前锚点"><i class="material-icons">my_location</i> 重置到锚点</button>
           <button data-cem-action="export" title="导出模型"><i class="material-icons">save</i> 导出模型</button>
           <button data-cem-action="build" title="创建资源包"><i class="material-icons">create_new_folder</i> 创建资源包</button>
         </div>
@@ -175,6 +177,7 @@
     studioPanel.node.querySelector('[data-cem-action="apply-entity"]').addEventListener('click', applyStudioEntitySelection);
     studioPanel.node.querySelector('[data-cem-action="reference"]').addEventListener('click', addConfiguredReference);
     studioPanel.node.querySelector('[data-cem-action="render"]').addEventListener('click', showRenderSettingsDialog);
+    studioPanel.node.querySelector('[data-cem-action="reset-anchor"]').addEventListener('click', resetSelectedAttachments);
     studioPanel.node.querySelector('[data-cem-action="export"]').addEventListener('click', exportCurrentProject);
     studioPanel.node.querySelector('[data-cem-action="build"]').addEventListener('click', () => buildResourcePack('new'));
     populateStudioEntityBrowser();
@@ -382,6 +385,39 @@
       }
     });
     dialog.show();
+  }
+
+  function resetSelectedAttachments() {
+    autoBindAttachments();
+    const settings = getSettings();
+    const reference = settings.reference || {};
+    const selected = (globalThis.Outliner?.selected || []).filter(element => reference.bindings?.[element.uuid || element.name]);
+    if (!selected.length) {
+      Blockbench.showMessageBox({title: 'CEM-S Studio attachment reset', message: '请先选择一个已经拖入参考锚点的 Cube 或 Group。'});
+      return;
+    }
+    const setVec3 = (target, property, values) => {
+      if (target[property]?.V3_set) target[property].V3_set(values);
+      else target[property] = values.slice();
+    };
+    Undo.initEdit({outliner: true, elements: selected});
+    const transforms = Object.assign({}, reference.transforms || {});
+    for (const element of selected) {
+      const key = element.uuid || element.name;
+      const anchorName = reference.bindings[key];
+      const anchor = findGroupByReference(reference.anchors?.[anchorName]);
+      if (!anchor) continue;
+      setVec3(element, 'origin', Array.isArray(anchor.origin) ? anchor.origin : [0, 0, 0]);
+      setVec3(element, 'rotation', [0, 0, 0]);
+      if (element.scale !== undefined) setVec3(element, 'scale', [1, 1, 1]);
+      transforms[key] = {position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1]};
+    }
+    Project.cem_studio = Object.assign({}, settings, {reference: Object.assign({}, reference, {transforms})});
+    Project.saved = false;
+    Undo.finishEdit('Reset CEM-S attachment to anchor', {outliner: true, elements: selected});
+    globalThis.Canvas?.updateAll?.();
+    refreshStudioPanel();
+    Blockbench.showQuickMessage(`CEM-S Studio: 已将 ${selected.length} 个挂件重置到锚点。`);
   }
 
   function installRenderProperties() {
@@ -801,6 +837,7 @@
     registerReferenceAction = new Action('cem_s_studio_register_reference', {name: 'Register Selected Group as Reference Model', icon: 'bookmark', category: 'tools', condition: () => Format === projectFormat && !!Project, click: registerSelectedReference});
     bindReferenceAction = new Action('cem_s_studio_bind_reference', {name: 'Bind Selected Group to Reference Anchor', icon: 'link', category: 'tools', condition: () => Format === projectFormat && !!Project, click: showBindReferenceDialog});
     renderSettingsAction = new Action('cem_s_studio_render_settings', {name: 'CEM-S Render Properties', icon: 'palette', category: 'tools', condition: () => Format === projectFormat && !!Project, click: showRenderSettingsDialog});
+    resetAttachmentAction = new Action('cem_s_studio_reset_attachment', {name: 'Reset Attachment to Anchor', icon: 'my_location', category: 'tools', condition: () => Format === projectFormat && !!Project, click: resetSelectedAttachments});
     studioMenu = new BarMenu('cem_s_studio', [
       settingsAction,
       addReferenceAction,
@@ -808,6 +845,7 @@
       registerReferenceAction,
       bindReferenceAction,
       renderSettingsAction,
+      resetAttachmentAction,
       buildAction,
       updateBuildAction,
       advancedSettingsAction,
@@ -835,7 +873,7 @@
     onunload() {
       uninstallBindingSync();
       uninstallTextureGeneratorGuard();
-      [saveAction, settingsAction, advancedSettingsAction, buildAction, updateBuildAction, exportAction, addReferenceAction, importReferenceAction, registerReferenceAction, bindReferenceAction, renderSettingsAction].forEach(action => action && action.delete());
+      [saveAction, settingsAction, advancedSettingsAction, buildAction, updateBuildAction, exportAction, addReferenceAction, importReferenceAction, registerReferenceAction, bindReferenceAction, renderSettingsAction, resetAttachmentAction].forEach(action => action && action.delete());
       if (studioMenu) studioMenu.delete?.();
       if (studioPanel) { studioPanel.delete?.(); studioPanel = null; }
       [exportDialog, settingsDialog, buildDialog].forEach(dialog => dialog && dialog.delete());
