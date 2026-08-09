@@ -23,6 +23,18 @@ test('uses supplied Blockbench face UV rectangles', () => {
   assert.match(result.glsl, /vec4\(1\.0, 2\.0, 3\.0, 4\.0\), vec4\(5\.0, 6\.0, 7\.0, 8\.0\)/);
 });
 
+test('exports per-cube render properties and combines them with rotated UVs', () => {
+  const model = {name: 'rendered', parts: [{
+    name: 'glow', type: 'cube', origin: [0, 0, 0], size: [1, 1, 1],
+    faceRotations: [1, 0, 0, 0, 0, 0],
+    render: {emissive: true, perFaceLighting: false, tint: [0.5, 1, 0.25, 1]}
+  }]};
+  const glsl = exportModel(model).glsl;
+  assert.match(glsl, /ADD_BOX_RENDER_UV/);
+  assert.match(glsl, /true, false, vec4\(0\.5, 1\.0, 0\.3, 1\.0\)/);
+  assert.throws(() => exportModel({name: 'bad', parts: [{type: 'cube', origin: [0, 0, 0], size: [1, 1, 1], render: {emissive: true, perFaceLighting: true, tint: [2, 0, 0, 1]}}]}), /render\.tint/);
+});
+
 test('converts rectangular Blockbench mesh faces to ADD_SQUARE', () => {
   const mesh = {
     name: 'cape',
@@ -80,6 +92,13 @@ test('rejects unsupported parts and malformed vectors', () => {
 test('converts a Blockbench cube to the exporter model', () => {
   const model = toCemModel('pig_ears', [{name: 'ear', from: [-2, 0, 1], to: [2, 3, 5], origin: [0, 1, 2], rotation: [0, 15, 0], faces: {down: {uv: [4, 5, 10, 13]}}}]);
   assert.deepEqual(model, {name: 'pig_ears', parts: [{name: 'ear', type: 'cube', origin: [0, 1.5, 3], size: [2, 1.5, 2], pivot: [0, -1, -2], rotation: [0, 15, 0], faces: [[4, 5, 6, 8], undefined, undefined, undefined, undefined, undefined]}]});
+});
+
+test('converts Blockbench CEM-S render properties without affecting default cubes', () => {
+  const plain = toCemModel('plain', [{from: [0, 0, 0], to: [1, 1, 1]}]);
+  assert.equal(plain.parts[0].render, undefined);
+  const rendered = toCemModel('rendered', [{from: [0, 0, 0], to: [1, 1, 1], cem_emissive: true, cem_per_face_lighting: false, cem_tint: '#80ff4080'}]);
+  assert.deepEqual(rendered.parts[0].render, {emissive: true, perFaceLighting: false, tint: [128 / 255, 1, 64 / 255, 128 / 255]});
 });
 
 test('does not export registered reference guide cubes', () => {

@@ -36,6 +36,22 @@ color = sBoxWithRotations(-center + pos * modelSize, dirTBN, size * modelSize, T
 color = sBoxWithRotations(Rotation * (-center + (pos + rotPivot) * modelSize) - rotPivot * modelSize, Rotation * dirTBN, size * modelSize, TBN * inverse(Rotation), color, minT, uSide, dSide, nSide, wSide, sSide, eSide, vec4(dRot, uRot, nRot, eRot), vec2(sRot, wRot)); \
 }
 
+#define ADD_BOX_RENDER(pos, size, dSide, uSide, nSide, eSide, sSide, wSide, emissive, perFaceLighting, tint) { \
+color = sBoxWithRender(-center + pos * modelSize, dirTBN, size * modelSize, TBN, color, minT, uSide, dSide, nSide, wSide, sSide, eSide, emissive, perFaceLighting, tint); \
+}
+
+#define ADD_BOX_RENDER_UV(pos, size, dSide, uSide, nSide, eSide, sSide, wSide, dRot, uRot, nRot, eRot, sRot, wRot, emissive, perFaceLighting, tint) { \
+color = sBoxWithRotationsRender(-center + pos * modelSize, dirTBN, size * modelSize, TBN, color, minT, uSide, dSide, nSide, wSide, sSide, eSide, vec4(dRot, uRot, nRot, eRot), vec2(sRot, wRot), emissive, perFaceLighting, tint); \
+}
+
+#define ADD_BOX_ROTATE_RENDER(pos, size, Rotation, rotPivot, dSide, uSide, nSide, eSide, sSide, wSide, emissive, perFaceLighting, tint) { \
+color = sBoxWithRender(Rotation * (-center + (pos + rotPivot) * modelSize) - rotPivot * modelSize, Rotation * dirTBN, size * modelSize, TBN * inverse(Rotation), color, minT, uSide, dSide, nSide, wSide, sSide, eSide, emissive, perFaceLighting, tint); \
+}
+
+#define ADD_BOX_ROTATE_RENDER_UV(pos, size, Rotation, rotPivot, dSide, uSide, nSide, eSide, sSide, wSide, dRot, uRot, nRot, eRot, sRot, wRot, emissive, perFaceLighting, tint) { \
+color = sBoxWithRotationsRender(Rotation * (-center + (pos + rotPivot) * modelSize) - rotPivot * modelSize, Rotation * dirTBN, size * modelSize, TBN * inverse(Rotation), color, minT, uSide, dSide, nSide, wSide, sSide, eSide, vec4(dRot, uRot, nRot, eRot), vec2(sRot, wRot), emissive, perFaceLighting, tint); \
+}
+
 #define ADD_QUAD(p1, p2, p3, p4, uv) { \
 }
 
@@ -155,7 +171,7 @@ vec2 rotateBoxUv(vec2 uv, float rotation)
     return vec2(uv.y, 1 - uv.x);
 }
 
-vec4 sBoxWithRotations(vec3 ro, vec3 rd, vec3 size, mat3 TBN, vec4 color, inout float T, vec4 dSide, vec4 uSide, vec4 nSide, vec4 eSide, vec4 sSide, vec4 wSide, vec4 sideRotations, vec2 sideRotations2)
+vec4 sBoxWithRotationsRender(vec3 ro, vec3 rd, vec3 size, mat3 TBN, vec4 color, inout float T, vec4 dSide, vec4 uSide, vec4 nSide, vec4 eSide, vec4 sSide, vec4 wSide, vec4 sideRotations, vec2 sideRotations2, bool emissive, bool perFaceLighting, vec4 tint)
 {
     vec2 texSize = textureSize(Sampler0, 0);
     vec3 normal = vec3(0);
@@ -192,13 +208,30 @@ vec4 sBoxWithRotations(vec3 ro, vec3 rd, vec3 size, mat3 TBN, vec4 color, inout 
         col = texture(Sampler0, (dSide.xy + dSide.zw * rotateBoxUv(box.xy, sideRotations.x)) / texSize);
     }
 
-    col = minecraft_mix_light(Light0_Direction, Light1_Direction, normalize(TBN * normal), col);
+    col *= tint;
+    if (perFaceLighting && !emissive)
+        col = minecraft_mix_light(Light0_Direction, Light1_Direction, normalize(TBN * normal), col);
+
+    // entity.fsh applies the light map after the model switch. Compensate here
+    // so emissive can be selected per generated part instead of per shader.
+    if (emissive)
+        col.rgb /= max(cem_lightMapColor.rgb, vec3(1.0 / 255.0));
 
     if (col.a < 0.1) return color;
 
     T = box.z;
 
     return col;
+}
+
+vec4 sBoxWithRotations(vec3 ro, vec3 rd, vec3 size, mat3 TBN, vec4 color, inout float T, vec4 dSide, vec4 uSide, vec4 nSide, vec4 eSide, vec4 sSide, vec4 wSide, vec4 sideRotations, vec2 sideRotations2)
+{
+    return sBoxWithRotationsRender(ro, rd, size, TBN, color, T, dSide, uSide, nSide, eSide, sSide, wSide, sideRotations, sideRotations2, false, true, vec4(1.0));
+}
+
+vec4 sBoxWithRender(vec3 ro, vec3 rd, vec3 size, mat3 TBN, vec4 color, inout float T, vec4 dSide, vec4 uSide, vec4 nSide, vec4 eSide, vec4 sSide, vec4 wSide, bool emissive, bool perFaceLighting, vec4 tint)
+{
+    return sBoxWithRotationsRender(ro, rd, size, TBN, color, T, dSide, uSide, nSide, eSide, sSide, wSide, vec4(0), vec2(0), emissive, perFaceLighting, tint);
 }
 
 vec4 sBox(vec3 ro, vec3 rd, vec3 size, mat3 TBN, vec4 color, inout float T, vec4 dSide, vec4 uSide, vec4 nSide, vec4 eSide, vec4 sSide, vec4 wSide)

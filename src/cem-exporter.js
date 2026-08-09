@@ -48,6 +48,10 @@
       if (part.faceRotations && (!Array.isArray(part.faceRotations) || part.faceRotations.length !== 6 || part.faceRotations.some((rotation) => !Number.isInteger(rotation) || ![0, 1, 3].includes(rotation)))) {
         throw new Error(`part ${index} faceRotations must contain six values from 0, 1, or 3`);
       }
+      if (part.render) {
+        if (typeof part.render !== 'object' || typeof part.render.emissive !== 'boolean' || typeof part.render.perFaceLighting !== 'boolean') throw new Error(`part ${index} render settings are invalid`);
+        if (!Array.isArray(part.render.tint) || part.render.tint.length !== 4 || part.render.tint.some(value => !Number.isFinite(value) || value < 0 || value > 1)) throw new Error(`part ${index} render.tint must contain four values from 0 to 1`);
+      }
     });
   }
 
@@ -70,12 +74,16 @@
     const rotations = part.faceRotations || Array(6).fill(0);
     const rotationArgs = rotations.join(', ');
     const uvRotate = rotations.some(Boolean);
+    const render = part.render;
+    const renderArgs = render ? `, ${render.emissive ? 'true' : 'false'}, ${render.perFaceLighting ? 'true' : 'false'}, ${formatVec4(render.tint)}` : '';
+    const renderName = render ? (uvRotate ? 'ADD_BOX_RENDER_UV' : 'ADD_BOX_RENDER') : (uvRotate ? 'ADD_BOX_UV_ROTATE' : 'ADD_BOX');
     if (!part.rotationMatrix && (!part.rotation || part.rotation.every((angle) => angle === 0))) {
-      return `    ${uvRotate ? 'ADD_BOX_UV_ROTATE' : 'ADD_BOX'}(${formatVec3(part.origin)}, ${formatVec3(part.size)}, ${faces}${uvRotate ? `, ${rotationArgs}` : ''})`;
+      return `    ${renderName}(${formatVec3(part.origin)}, ${formatVec3(part.size)}, ${faces}${uvRotate ? `, ${rotationArgs}` : ''}${renderArgs})`;
     }
     const pivot = part.pivot || part.origin;
     const rotation = part.rotationMatrix ? formatMat3(part.rotationMatrix) : emitRotation(part.rotation);
-    return `    ${uvRotate ? 'ADD_BOX_ROTATE_UV' : 'ADD_BOX_ROTATE'}(${formatVec3(part.origin)}, ${formatVec3(part.size)}, ${rotation}, ${formatVec3(pivot)}, ${faces}${uvRotate ? `, ${rotationArgs}` : ''})`;
+    const rotateRenderName = render ? (uvRotate ? 'ADD_BOX_ROTATE_RENDER_UV' : 'ADD_BOX_ROTATE_RENDER') : (uvRotate ? 'ADD_BOX_ROTATE_UV' : 'ADD_BOX_ROTATE');
+    return `    ${rotateRenderName}(${formatVec3(part.origin)}, ${formatVec3(part.size)}, ${rotation}, ${formatVec3(pivot)}, ${faces}${uvRotate ? `, ${rotationArgs}` : ''}${renderArgs})`;
   }
 
   function emitModelCase(model, modelId, modelScale) {

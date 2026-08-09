@@ -25,6 +25,8 @@
   let importReferenceAction;
   let registerReferenceAction;
   let bindReferenceAction;
+  let renderSettingsAction;
+  const renderProperties = [];
   let originalGenerateTemplate;
   let originalGenerateColorMapTemplate;
   let bindingSyncInstalled = false;
@@ -161,6 +163,7 @@
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px">
           <button data-cem-action="settings" title="项目设置"><i class="material-icons">settings</i> 设置</button>
           <button data-cem-action="reference" title="添加参考模型"><i class="material-icons">accessibility</i> 参考模型</button>
+          <button data-cem-action="render" title="设置选中部件的渲染属性"><i class="material-icons">palette</i> 渲染属性</button>
           <button data-cem-action="export" title="导出模型"><i class="material-icons">save</i> 导出模型</button>
           <button data-cem-action="build" title="创建资源包"><i class="material-icons">create_new_folder</i> 创建资源包</button>
         </div>
@@ -170,6 +173,7 @@
     studioPanel.node.querySelector('[data-cem-entity="category"]').addEventListener('change', populateStudioEntityBrowser);
     studioPanel.node.querySelector('[data-cem-action="apply-entity"]').addEventListener('click', applyStudioEntitySelection);
     studioPanel.node.querySelector('[data-cem-action="reference"]').addEventListener('click', addConfiguredReference);
+    studioPanel.node.querySelector('[data-cem-action="render"]').addEventListener('click', showRenderSettingsDialog);
     studioPanel.node.querySelector('[data-cem-action="export"]').addEventListener('click', exportCurrentProject);
     studioPanel.node.querySelector('[data-cem-action="build"]').addEventListener('click', () => buildResourcePack('new'));
     populateStudioEntityBrowser();
@@ -315,6 +319,63 @@
     const group = Array.isArray(Group.selected) ? Group.selected[0] : Group.selected;
     if (group) return group;
     return (Outliner.selected || []).find(item => item && item.type === 'group') || null;
+  }
+
+  function selectedAuthorCubes() {
+    const selected = globalThis.Outliner?.selected || [];
+    const settings = getSettings();
+    const cubes = new Set();
+    const collect = item => {
+      if (!item) return;
+      if (item.type === 'cube') cubes.add(item);
+      (item.children || []).forEach(collect);
+    };
+    selected.forEach(collect);
+    return [...cubes].filter(cube => !isReferenceCube(cube, settings.reference));
+  }
+
+  function showRenderSettingsDialog() {
+    const cubes = selectedAuthorCubes();
+    if (!cubes.length) {
+      Blockbench.showMessageBox({title: 'CEM-S Studio render properties', message: '请先在 Outliner 中选择一个用户 Cube 或包含 Cube 的 Group。'});
+      return;
+    }
+    const first = cubes[0];
+    const tint = /^#[0-9a-f]{8}$/i.test(first.cem_tint || '') ? first.cem_tint : '#ffffffff';
+    const dialog = new Dialog({
+      id: 'cem_s_studio_render_settings',
+      title: `渲染属性（${cubes.length} 个 Cube）`,
+      form: {
+        emissive: {label: '发光', type: 'checkbox', value: !!first.cem_emissive},
+        per_face_lighting: {label: '逐面光照', type: 'checkbox', value: first.cem_per_face_lighting !== false},
+        tint: {label: '颜色乘算', type: 'color', value: tint.slice(0, 7)},
+        alpha: {label: '透明度', type: 'number', value: parseInt(tint.slice(7), 16), min: 0, max: 255, step: 1}
+      },
+      onConfirm(result) {
+        dialog.hide();
+        const rgb = String(result.tint || '#ffffff').replace('#', '').padEnd(6, 'f').slice(0, 6);
+        const alpha = Math.max(0, Math.min(255, Math.round(Number(result.alpha)))).toString(16).padStart(2, '0');
+        Undo.initEdit({elements: cubes});
+        cubes.forEach(cube => {
+          cube.cem_emissive = !!result.emissive;
+          cube.cem_per_face_lighting = !!result.per_face_lighting;
+          cube.cem_tint = `#${rgb}${alpha}`;
+        });
+        Undo.finishEdit('Change CEM-S render properties', {elements: cubes});
+        Project.saved = false;
+        Blockbench.showQuickMessage(`CEM-S Studio: 已更新 ${cubes.length} 个 Cube 的渲染属性。`);
+      }
+    });
+    dialog.show();
+  }
+
+  function installRenderProperties() {
+    if (typeof Property !== 'function' || typeof Cube !== 'function' || renderProperties.length) return;
+    renderProperties.push(
+      new Property(Cube, 'boolean', 'cem_emissive', {label: 'CEM-S Emissive', default: false}),
+      new Property(Cube, 'boolean', 'cem_per_face_lighting', {label: 'CEM-S Per-face Lighting', default: true}),
+      new Property(Cube, 'string', 'cem_tint', {label: 'CEM-S Tint', default: '#ffffffff'})
+    );
   }
 
   function withoutReferenceGuides(callback) {
@@ -666,6 +727,7 @@
   }
 
   function installProjectFormat() {
+    installRenderProperties();
     baseProjectCodec = Codecs.project;
     projectCodec = new Codec('cemst', {
       name: 'CEM-S Studio Project',
@@ -721,12 +783,14 @@
     importReferenceAction = new Action('cem_s_studio_import_reference', {name: 'Import Vanilla Reference Model (.bbmodel)', icon: 'folder_open', category: 'tools', condition: () => Format === projectFormat && !!Project, click: importReferenceModel});
     registerReferenceAction = new Action('cem_s_studio_register_reference', {name: 'Register Selected Group as Reference Model', icon: 'bookmark', category: 'tools', condition: () => Format === projectFormat && !!Project, click: registerSelectedReference});
     bindReferenceAction = new Action('cem_s_studio_bind_reference', {name: 'Bind Selected Group to Reference Anchor', icon: 'link', category: 'tools', condition: () => Format === projectFormat && !!Project, click: showBindReferenceDialog});
+    renderSettingsAction = new Action('cem_s_studio_render_settings', {name: 'CEM-S Render Properties', icon: 'palette', category: 'tools', condition: () => Format === projectFormat && !!Project, click: showRenderSettingsDialog});
     studioMenu = new BarMenu('cem_s_studio', [
       settingsAction,
       addReferenceAction,
       importReferenceAction,
       registerReferenceAction,
       bindReferenceAction,
+      renderSettingsAction,
       buildAction,
       updateBuildAction,
       advancedSettingsAction,
@@ -754,7 +818,7 @@
     onunload() {
       uninstallBindingSync();
       uninstallTextureGeneratorGuard();
-      [saveAction, settingsAction, advancedSettingsAction, buildAction, updateBuildAction, exportAction, addReferenceAction, importReferenceAction, registerReferenceAction, bindReferenceAction].forEach(action => action && action.delete());
+      [saveAction, settingsAction, advancedSettingsAction, buildAction, updateBuildAction, exportAction, addReferenceAction, importReferenceAction, registerReferenceAction, bindReferenceAction, renderSettingsAction].forEach(action => action && action.delete());
       if (studioMenu) studioMenu.delete?.();
       if (studioPanel) { studioPanel.delete?.(); studioPanel = null; }
       [exportDialog, settingsDialog, buildDialog].forEach(dialog => dialog && dialog.delete());

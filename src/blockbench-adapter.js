@@ -189,6 +189,8 @@ function toCemCubePart(cube, index, anchorOrigin = [0, 0, 0], atlas) {
   if (baked) part.rotationMatrix = baked.rotationMatrix;
   if (faces.some(Boolean)) part.faces = faces;
   if (faceRotations.some(Boolean)) part.faceRotations = faceRotations;
+  const render = renderSettingsForCube(cube);
+  if (render) part.render = render;
   return part;
 }
 
@@ -219,6 +221,19 @@ function anchorOriginForCube(cube, reference) {
     element = element.parent;
   }
   throw new Error(`bound reference anchor "${anchor}" is not present in the Outliner`);
+}
+
+function renderSettingsForCube(cube) {
+  const source = cube?.cem_s_render || cube?.cemSRender || {};
+  const emissive = source.emissive ?? cube?.cem_emissive ?? cube?.cemS_emissive;
+  const perFaceLighting = source.perFaceLighting ?? cube?.cem_per_face_lighting ?? cube?.cemS_per_face_lighting;
+  const tint = source.tint ?? cube?.cem_tint ?? cube?.cemS_tint;
+  const hex = typeof tint === 'string' && /^#[0-9a-f]{8}$/i.test(tint) ? tint.slice(1).match(/../g).map(value => parseInt(value, 16) / 255) : null;
+  const normalizedTint = hex || (Array.isArray(tint) && tint.length === 4 ? tint.map(Number) : null);
+  const hasTint = normalizedTint && normalizedTint.every(value => Number.isFinite(value));
+  const tinted = hasTint && normalizedTint.some((value, index) => value !== 1);
+  if (!emissive && perFaceLighting !== false && !tinted) return null;
+  return {emissive: !!emissive, perFaceLighting: perFaceLighting !== false, tint: hasTint ? normalizedTint : [1, 1, 1, 1]};
 }
 
 function toCemModel(name, cubes, options = {}) {
