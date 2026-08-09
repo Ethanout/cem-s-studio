@@ -15,6 +15,7 @@
   let updateBuildAction;
   let buildDialog;
   let studioMenu;
+  let studioPanel;
   let projectFormat;
   let projectCodec;
   let saveAction;
@@ -33,6 +34,64 @@
 
   function getSettings() {
     return Project.cem_studio ? JSON.parse(JSON.stringify(Project.cem_studio)) : defaultSettings();
+  }
+
+  function studioPanelState() {
+    const settings = getSettings();
+    const reference = settings.reference || {};
+    const anchorCount = Object.keys(reference.anchors || {}).length;
+    const bindingCount = Object.keys(reference.bindings || {}).length;
+    const hasReference = !!reference.root && reference.rig !== 'none';
+    const modelCount = [...(globalThis.Cube?.all || []), ...(globalThis.Mesh?.all || [])].filter(element => !isReferenceCube(element, reference)).length;
+    return {settings, anchorCount, bindingCount, hasReference, modelCount};
+  }
+
+  function refreshStudioPanel() {
+    if (!studioPanel?.node) return;
+    const state = studioPanelState();
+    const {settings} = state;
+    const entityName = profileFor(settings.targetEntity, settings.cemVersion)?.name || settings.targetEntity || '未选择';
+    const referenceLabel = state.hasReference ? `${state.anchorCount} 个锚点` : '未添加';
+    const bindingLabel = state.bindingCount ? `${state.bindingCount} 个已绑定` : '暂无绑定';
+    const next = !state.hasReference ? '先添加参考模型' : !state.modelCount ? '创建一个 Cube 或 Mesh' : !state.bindingCount ? '把模型拖入参考锚点' : '可以创建资源包';
+    const setText = (selector, value) => { const node = studioPanel.node.querySelector(selector); if (node) node.textContent = value; };
+    setText('[data-cem-state="entity"]', `${entityName} · ${settings.cemVersion}`);
+    setText('[data-cem-state="pack"]', settings.resourcePack?.name || '未设置资源包');
+    setText('[data-cem-state="reference"]', referenceLabel);
+    setText('[data-cem-state="binding"]', bindingLabel);
+    setText('[data-cem-state="next"]', next);
+    const exportButton = studioPanel.node.querySelector('[data-cem-action="export"]');
+    const buildButton = studioPanel.node.querySelector('[data-cem-action="build"]');
+    if (exportButton) exportButton.disabled = state.modelCount === 0;
+    if (buildButton) buildButton.disabled = state.modelCount === 0;
+  }
+
+  function installStudioPanel() {
+    if (typeof Panel !== 'function' || studioPanel) return;
+    studioPanel = new Panel('cem_s_studio_panel', {
+      name: 'CEM-S Studio', icon: 'extension', category: 'sidebar',
+      condition: () => Format === projectFormat && !!Project
+    });
+    studioPanel.node.innerHTML = `
+      <div class="cem-s-studio-panel" style="padding: 8px">
+        <div style="font-weight: 600; margin-bottom: 8px">项目状态</div>
+        <div data-cem-state="entity" style="margin-bottom: 4px"></div>
+        <div data-cem-state="pack" style="margin-bottom: 4px"></div>
+        <div data-cem-state="reference" style="margin-bottom: 4px"></div>
+        <div data-cem-state="binding" style="margin-bottom: 8px"></div>
+        <div data-cem-state="next" style="margin-bottom: 8px; color: var(--color-bright)"></div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px">
+          <button data-cem-action="settings" title="项目设置"><i class="material-icons">settings</i> 设置</button>
+          <button data-cem-action="reference" title="添加参考模型"><i class="material-icons">accessibility</i> 参考模型</button>
+          <button data-cem-action="export" title="导出模型"><i class="material-icons">save</i> 导出模型</button>
+          <button data-cem-action="build" title="创建资源包"><i class="material-icons">create_new_folder</i> 创建资源包</button>
+        </div>
+      </div>`;
+    studioPanel.node.querySelector('[data-cem-action="settings"]').addEventListener('click', () => showProjectSettings(false));
+    studioPanel.node.querySelector('[data-cem-action="reference"]').addEventListener('click', addPlayerReference);
+    studioPanel.node.querySelector('[data-cem-action="export"]').addEventListener('click', exportCurrentProject);
+    studioPanel.node.querySelector('[data-cem-action="build"]').addEventListener('click', () => buildResourcePack('new'));
+    refreshStudioPanel();
   }
 
   function currentDocument() {
@@ -78,6 +137,7 @@
     Project.cem_studio = next;
     Project.name = next.name;
     Project.saved = false;
+    refreshStudioPanel();
   }
 
   function showProjectSettings(advanced = false) {
@@ -152,6 +212,7 @@
 
   function syncBindingsAfterEdit() {
     if (Format === projectFormat && Project?.cem_studio) autoBindAttachments();
+    refreshStudioPanel();
   }
 
   function installBindingSync() {
@@ -245,6 +306,7 @@
     }
     Project.cem_studio = Object.assign({}, settings, {reference: {rig, root: root.uuid || root.name, anchors: anchorNames, bindings: {}, guides: created.map(cube => cube.uuid).filter(Boolean)}});
     Project.saved = false;
+    refreshStudioPanel();
     Undo.finishEdit(`Add CEM-S ${rig} Reference`, {outliner: true, elements: created});
     root.select?.();
     Blockbench.showQuickMessage(`CEM-S Studio: ${rig} reference added. Drag model groups into its anchors.`);
@@ -562,6 +624,9 @@
       saveAction
     ], {name: 'CEM-S Studio', icon: 'extension', condition: () => Format === projectFormat && !!Project});
     MenuBar.addMenu(studioMenu, 'tools');
+    // Panel installation is deferred until the plugin has fully installed its
+    // Blockbench event handlers, so it cannot interfere with binding events.
+    setTimeout(installStudioPanel, 0);
   }
 
   Plugin.register('cem_s_studio', {
@@ -582,6 +647,7 @@
       uninstallTextureGeneratorGuard();
       [saveAction, settingsAction, advancedSettingsAction, buildAction, updateBuildAction, exportAction, addReferenceAction, importReferenceAction, registerReferenceAction, bindReferenceAction].forEach(action => action && action.delete());
       if (studioMenu) studioMenu.delete?.();
+      if (studioPanel) { studioPanel.delete?.(); studioPanel = null; }
       [exportDialog, settingsDialog, buildDialog].forEach(dialog => dialog && dialog.delete());
       if (projectCodec) projectCodec.delete();
       if (projectFormat) projectFormat.delete();
