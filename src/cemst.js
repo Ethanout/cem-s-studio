@@ -120,6 +120,7 @@
     if (typeof detection.hideUnmatched !== 'boolean') throw new Error('detection.hideUnmatched must be boolean');
     if (!['entity', 'armor'].includes(document.project.targetType)) throw new Error('project.targetType must be entity or armor');
     if (document.project.targetType !== detection.channel) throw new Error('project.targetType must match detection.channel');
+    if (document.project.referenceRig !== undefined && !['none', 'player', 'pig', 'elytra', 'arrow', 'armor_stand', 'custom'].includes(document.project.referenceRig)) throw new Error('project.referenceRig is unsupported');
     if (document.project.texturePath !== null && document.project.texturePath !== undefined && (typeof document.project.texturePath !== 'string' || !document.project.texturePath.startsWith('assets/') || !document.project.texturePath.endsWith('.png'))) throw new Error('project.texturePath must be an assets PNG path or null');
     const reference = document.project.reference || {rig: 'none', root: null, anchors: {}, bindings: {}, transforms: {}, guides: []};
     if (!['none', 'player', 'pig', 'elytra', 'arrow', 'armor_stand', 'custom'].includes(reference.rig)) throw new Error('project.reference.rig is unsupported');
@@ -191,6 +192,7 @@
         cemVersion,
         targetType,
         targetEntity,
+        referenceRig: options.referenceRig || (entityDatabase.profileFor(inferredPreset, cemVersion).referenceRig || 'none'),
         texturePath,
         detection,
         reference: options.reference ? clone(options.reference) : {rig: 'none', root: null, anchors: {}, bindings: {}, transforms: {}, guides: []},

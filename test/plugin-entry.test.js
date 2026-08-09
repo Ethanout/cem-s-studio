@@ -16,6 +16,9 @@ test('registers the CEM-S Studio project format and resource-pack workflow', () 
   assert.match(source, /Build CEM-S Resource Pack/);
   assert.match(source, /Add Entity Reference Model/);
   assert.match(source, /profile\.referenceRig/);
+  assert.match(source, /reference_rig/);
+  assert.match(source, /reference model used for positioning attachments|coordinate skeleton used for positioning attachments/i);
+  assert.match(source, /请先移出或解除当前参考模型中的挂件/);
   assert.match(source, /Import Vanilla Reference Model \(\.bbmodel\)/);
   assert.match(source, /Register Selected Group as Reference Model/);
   assert.match(source, /Bind or Move Selected Parts to Reference Anchor/);

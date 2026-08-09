@@ -23,6 +23,15 @@ test('persists an explicit target texture path for dynamic entities', () => {
   assert.throws(() => createProject({texturePath: 'textures/invalid.png'}), /project.texturePath/);
 });
 
+test('allows a host entity to use a different reference skeleton', () => {
+  const project = createProject({name: 'Player Reference Jetpack', targetEntity: 'elytra', targetType: 'armor', referenceRig: 'player', detection: {preset: 'elytra'}});
+  assert.equal(project.project.targetEntity, 'elytra');
+  assert.equal(project.project.targetType, 'armor');
+  assert.equal(project.project.referenceRig, 'player');
+  const parsed = parseProject(serializeProject(project));
+  assert.equal(parsed.project.referenceRig, 'player');
+});
+
 test('serializes and parses a CEM-S Studio project without losing Blockbench data', () => {
   const input = createProject({name: 'Demo', modelId: 2, blockbench: {meta: {model_format: 'cem_s_studio'}, outliner: []}});
   const output = parseProject(serializeProject(input));

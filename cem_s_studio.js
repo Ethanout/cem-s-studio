@@ -798,6 +798,7 @@ return {toCemModel, toCemModels, bindingForCube, isReferenceCube};
     if (typeof detection.hideUnmatched !== 'boolean') throw new Error('detection.hideUnmatched must be boolean');
     if (!['entity', 'armor'].includes(document.project.targetType)) throw new Error('project.targetType must be entity or armor');
     if (document.project.targetType !== detection.channel) throw new Error('project.targetType must match detection.channel');
+    if (document.project.referenceRig !== undefined && !['none', 'player', 'pig', 'elytra', 'arrow', 'armor_stand', 'custom'].includes(document.project.referenceRig)) throw new Error('project.referenceRig is unsupported');
     if (document.project.texturePath !== null && document.project.texturePath !== undefined && (typeof document.project.texturePath !== 'string' || !document.project.texturePath.startsWith('assets/') || !document.project.texturePath.endsWith('.png'))) throw new Error('project.texturePath must be an assets PNG path or null');
     const reference = document.project.reference || {rig: 'none', root: null, anchors: {}, bindings: {}, transforms: {}, guides: []};
     if (!['none', 'player', 'pig', 'elytra', 'arrow', 'armor_stand', 'custom'].includes(reference.rig)) throw new Error('project.reference.rig is unsupported');
@@ -869,6 +870,7 @@ return {toCemModel, toCemModels, bindingForCube, isReferenceCube};
         cemVersion,
         targetType,
         targetEntity,
+        referenceRig: options.referenceRig || (entityDatabase.profileFor(inferredPreset, cemVersion).referenceRig || 'none'),
         texturePath,
         detection,
         reference: options.reference ? clone(options.reference) : {rig: 'none', root: null, anchors: {}, bindings: {}, transforms: {}, guides: []},
@@ -1496,8 +1498,9 @@ SOFTWARE.
     const settings = getSettings();
     if (profileId === settings.targetEntity) return;
     const profile = profileFor(profileId, settings.cemVersion);
+    const requestedRig = settings.referenceRig || profile.referenceRig;
     const reference = settings.reference || {};
-    if (reference.root && reference.rig !== profile.referenceRig) {
+    if (reference.root && reference.rig !== requestedRig) {
       const root = findGroupByReference(reference.root);
       const hasBindings = Object.keys(reference.bindings || {}).length > 0;
       const hasAuthorElements = root && [...(globalThis.Cube?.all || []), ...(globalThis.Mesh?.all || [])].some(element => isInsideGroup(element, root) && !isReferenceCube(element, reference));
@@ -1509,7 +1512,7 @@ SOFTWARE.
       Project.cem_studio = Object.assign({}, settings, {reference: {rig: 'none', root: null, anchors: {}, bindings: {}, transforms: {}, guides: []}});
     }
     setSettings({entity_profile: profileId, minecraft_version: settings.cemVersion});
-    if (profile.referenceRig !== 'none' && !getSettings().reference?.root) addReferenceRig(profile.referenceRig);
+    if (requestedRig !== 'none' && !getSettings().reference?.root) addReferenceRig(requestedRig);
     populateStudioEntityBrowser();
     Blockbench.showQuickMessage(`CEM-S Studio: switched to ${profile.name}.`);
   }
@@ -1669,7 +1672,8 @@ SOFTWARE.
           Project.saved = false;
           switchWorkspaceModel(id);
           const profile = profileFor(entity, version);
-          if (profile.referenceRig !== 'none' && !getSettings().reference?.root) addReferenceRig(profile.referenceRig);
+          const requestedRig = getSettings().referenceRig || profile.referenceRig;
+          if (requestedRig !== 'none' && !getSettings().reference?.root) addReferenceRig(requestedRig);
         } catch (error) {
           Blockbench.showMessageBox({title: 'CEM-S Studio workspace model failed', message: error.message});
         }
@@ -1709,6 +1713,7 @@ SOFTWARE.
       targetEntity: presetName,
       targetType: presetName === 'custom' ? value('render_target', current.targetType) : profile.targetType,
       detection,
+      referenceRig: value('reference_rig', current.referenceRig || profile.referenceRig || 'none'),
       texturePath: value('texture_path', current.texturePath || null),
       resourcePack: {name: value('pack_name', current.resourcePack.name), description: value('pack_description', current.resourcePack.description), packFormat: SUPPORTED_CEM_VERSIONS[version]}
     }).project;
@@ -1726,6 +1731,7 @@ SOFTWARE.
       minecraft_version: {label: 'Minecraft version', description: 'Selects the bundled CEM-S core shaders and resource-pack format.', type: 'select', options: {'1.21.6': '1.21.6', '1.21.11': '1.21.11', '26.1+': '26.1+ (26.1.2 runtime)'}, value: settings.cemVersion},
       model_id: {label: 'Model ID', description: 'Keep this ID unique in the target resource pack.', type: 'number', value: settings.modelId, min: 0, step: 1},
       entity_profile: {label: 'Entity type', description: 'Chooses the reference model and CEM-S detection profile.', type: 'select', options: optionsFor(settings.cemVersion), value: settings.targetEntity},
+      reference_rig: {label: 'Reference model', description: 'Choose the coordinate skeleton used for positioning attachments. It can differ from the rendered host entity.', type: 'select', options: {none: 'None', player: 'Player', pig: 'Pig', elytra: 'Elytra / Armor', arrow: 'Arrow / Projectile', armor_stand: 'Armor Stand'}, value: settings.referenceRig || settings.reference?.rig || 'none'},
       pack_name: {label: 'Resource pack name', type: 'text', value: settings.resourcePack.name}
     };
     if (advanced) Object.assign(form, {
@@ -1752,9 +1758,20 @@ SOFTWARE.
       onConfirm(result) {
         settingsDialog.hide();
         try {
+          const currentSettings = getSettings();
+          const selectedProfile = profileFor(result.entity_profile || result.detection_preset || currentSettings.targetEntity, result.minecraft_version || currentSettings.cemVersion);
+          const requestedRig = result.reference_rig || currentSettings.referenceRig || selectedProfile.referenceRig || 'none';
+          const currentReference = currentSettings.reference || {};
+          if (currentReference.root && currentReference.rig !== requestedRig) {
+            const root = findGroupByReference(currentReference.root);
+            const hasBindings = Object.keys(currentReference.bindings || {}).length > 0;
+            const hasAuthorElements = root && [...(globalThis.Cube?.all || []), ...(globalThis.Mesh?.all || [])].some(element => isInsideGroup(element, root) && !isReferenceCube(element, currentReference));
+            if (hasBindings || hasAuthorElements) throw new Error('请先移出或解除当前参考模型中的挂件，再切换参考骨架。');
+            root?.remove?.();
+            Project.cem_studio = Object.assign({}, currentSettings, {reference: {rig: 'none', root: null, anchors: {}, bindings: {}, transforms: {}, guides: []}});
+          }
           setSettings(result);
-          const selectedProfile = profileFor(result.entity_profile || result.detection_preset || getSettings().targetEntity, getSettings().cemVersion);
-          if (selectedProfile.referenceRig !== 'none' && !getSettings().reference?.root) addReferenceRig(selectedProfile.referenceRig);
+          if (requestedRig && requestedRig !== 'none' && !getSettings().reference?.root) addReferenceRig(requestedRig);
           Blockbench.showQuickMessage('CEM-S Studio: project settings updated.');
         } catch (error) {
           Blockbench.showMessageBox({title: 'CEM-S Studio settings failed', message: error.message});
@@ -2040,11 +2057,12 @@ SOFTWARE.
   function addConfiguredReference() {
     const settings = getSettings();
     const profile = profileFor(settings.targetEntity, settings.cemVersion);
-    if (!profile.referenceRig || profile.referenceRig === 'none') {
+    const requestedRig = settings.referenceRig || profile.referenceRig;
+    if (!requestedRig || requestedRig === 'none') {
       Blockbench.showMessageBox({title: 'CEM-S Studio reference', message: 'This entity has no bundled reference rig. Import or register a vanilla reference model instead.'});
       return;
     }
-    addReferenceRig(profile.referenceRig);
+    addReferenceRig(requestedRig);
   }
 
   function isInsideGroup(element, root) {
