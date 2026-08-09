@@ -18,7 +18,7 @@ test('registers the CEM-S Studio project format and resource-pack workflow', () 
   assert.match(source, /profile\.referenceRig/);
   assert.match(source, /Import Vanilla Reference Model \(\.bbmodel\)/);
   assert.match(source, /Register Selected Group as Reference Model/);
-  assert.match(source, /Bind Selected Group to Reference Anchor/);
+  assert.match(source, /Bind or Move Selected Parts to Reference Anchor/);
   assert.match(source, /addReferenceRig/);
   assert.match(source, /entity_profile/);
   assert.match(source, /optionsFor/);
@@ -34,6 +34,10 @@ test('registers the CEM-S Studio project format and resource-pack workflow', () 
   assert.match(source, /data-cem-action="reference"/);
   assert.match(source, /data-cem-action="render"/);
   assert.match(source, /data-cem-action="reset-anchor"/);
+  assert.match(source, /data-cem-action="rebind"/);
+  assert.match(source, /selectedAttachmentSummary/);
+  assert.match(source, /位置偏移/);
+  assert.match(source, /showRebindAttachmentDialog/);
   assert.match(source, /Reset Attachment to Anchor/);
   assert.match(source, /cem_emissive/);
   assert.match(source, /cem_per_face_lighting/);

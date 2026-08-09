@@ -1229,7 +1229,57 @@ SOFTWARE.
     const hasReference = !!reference.root && reference.rig !== 'none';
     const modelCount = [...(globalThis.Cube?.all || []), ...(globalThis.Mesh?.all || [])].filter(element => !isReferenceCube(element, reference)).length;
     const texture = studioTextureState(settings, reference);
-    return {settings, anchorCount, bindingCount, hasReference, modelCount, texture};
+    return {settings, anchorCount, bindingCount, hasReference, modelCount, texture, selection: selectedAttachmentSummary(reference)};
+  }
+
+  function attachmentBindingFor(element, reference) {
+    let current = element;
+    while (current) {
+      const key = current.uuid || current.name;
+      if (key && reference.bindings?.[key]) {
+        return {anchor: reference.bindings[key], owner: current, transform: reference.transforms?.[key] || null};
+      }
+      current = current.parent;
+    }
+    return null;
+  }
+
+  function selectedAttachmentElements() {
+    const reference = getSettings().reference || {};
+    const selected = (globalThis.Outliner?.selected || []).filter(element => {
+      if (!element || !['group', 'cube', 'mesh'].includes(element.type)) return false;
+      return !isReferenceGroup(element) && !isReferenceCube(element, reference);
+    });
+    return selected.filter(element => !selected.some(parent => parent !== element && parent.type === 'group' && isInsideGroup(element, parent)));
+  }
+
+  function formatVec3(values, fallback) {
+    return (Array.isArray(values) ? values : fallback).map(value => {
+      const rounded = Math.round(Number(value) * 1000) / 1000;
+      return Object.is(rounded, -0) ? '0' : String(rounded);
+    }).join(', ');
+  }
+
+  function selectedAttachmentSummary(reference) {
+    const selected = selectedAttachmentElements();
+    if (!selected.length) return {count: 0, label: '未选择用户部件', boundCount: 0, canRebind: false};
+    const resolved = selected.map(element => ({element, binding: attachmentBindingFor(element, reference)}));
+    const bound = resolved.filter(item => item.binding);
+    if (!bound.length) return {count: selected.length, label: `${selected.length} 个部件 · 未绑定`, boundCount: 0, canRebind: true};
+    const anchors = [...new Set(bound.map(item => item.binding.anchor))];
+    const inherited = bound.filter(item => item.binding.owner !== item.element).length;
+    const first = bound[0].binding;
+    const transform = first.transform;
+    return {
+      count: selected.length,
+      boundCount: bound.length,
+      canRebind: true,
+      label: `${selected.length} 个部件 · ${anchors.length === 1 ? anchors[0] : '多个锚点'}${inherited ? ` · ${inherited} 个继承绑定` : ''}`,
+      position: formatVec3(transform?.position, [0, 0, 0]),
+      rotation: formatVec3(transform?.rotation, [0, 0, 0]),
+      scale: formatVec3(transform?.scale, [1, 1, 1]),
+      mixed: bound.length !== selected.length || anchors.length > 1 || bound.some(item => JSON.stringify(item.binding.transform) !== JSON.stringify(transform))
+    };
   }
 
   function refreshStudioPanel() {
@@ -1249,10 +1299,20 @@ SOFTWARE.
     setText('[data-cem-state="binding"]', bindingLabel);
     setText('[data-cem-state="textures"]', textureLabel);
     setText('[data-cem-state="next"]', next);
+    setText('[data-cem-selection="summary"]', state.selection.label);
+    setText('[data-cem-selection="position"]', state.selection.mixed ? '多个值' : state.selection.position || '—');
+    setText('[data-cem-selection="rotation"]', state.selection.mixed ? '多个值' : state.selection.rotation || '—');
+    setText('[data-cem-selection="scale"]', state.selection.mixed ? '多个值' : state.selection.scale || '—');
+    const selectionDetails = studioPanel.node.querySelector('[data-cem-selection="details"]');
+    if (selectionDetails) selectionDetails.hidden = state.selection.boundCount === 0;
     const exportButton = studioPanel.node.querySelector('[data-cem-action="export"]');
     const buildButton = studioPanel.node.querySelector('[data-cem-action="build"]');
+    const rebindButton = studioPanel.node.querySelector('[data-cem-action="rebind"]');
+    const resetButton = studioPanel.node.querySelector('[data-cem-action="reset-anchor"]');
     if (exportButton) exportButton.disabled = state.modelCount === 0;
     if (buildButton) buildButton.disabled = state.modelCount === 0 || !!state.texture.issue;
+    if (rebindButton) rebindButton.disabled = !state.selection.canRebind || !state.hasReference;
+    if (resetButton) resetButton.disabled = state.selection.boundCount === 0;
     const entitySelect = studioPanel.node.querySelector('[data-cem-entity="profile"]');
     if (entitySelect && entitySelect.dataset.version !== settings.cemVersion) populateStudioEntityBrowser();
   }
@@ -1319,6 +1379,15 @@ SOFTWARE.
         <div data-cem-state="binding" style="margin-bottom: 8px"></div>
         <div data-cem-state="textures" style="margin-bottom: 8px"></div>
         <div data-cem-state="next" style="margin-bottom: 8px; color: var(--color-bright)"></div>
+        <div style="border-top: 1px solid var(--color-border); padding-top: 8px; margin-bottom: 8px">
+          <div style="font-weight: 600; margin-bottom: 4px">选中挂件</div>
+          <div data-cem-selection="summary" style="margin-bottom: 4px">未选择用户部件</div>
+          <div data-cem-selection="details" style="font-size: 0.9em; opacity: 0.8" hidden>
+            <div>位置偏移：<span data-cem-selection="position"></span></div>
+            <div>旋转偏移：<span data-cem-selection="rotation"></span></div>
+            <div>缩放：<span data-cem-selection="scale"></span></div>
+          </div>
+        </div>
         <div style="display: grid; gap: 4px; margin-bottom: 8px">
           <input data-cem-entity="search" type="search" placeholder="搜索实体" aria-label="搜索实体">
           <select data-cem-entity="category" aria-label="实体分类"></select>
@@ -1329,6 +1398,7 @@ SOFTWARE.
           <button data-cem-action="settings" title="项目设置"><i class="material-icons">settings</i> 设置</button>
           <button data-cem-action="reference" title="添加参考模型"><i class="material-icons">accessibility</i> 参考模型</button>
           <button data-cem-action="render" title="设置选中部件的渲染属性"><i class="material-icons">palette</i> 渲染属性</button>
+          <button data-cem-action="rebind" title="将选中的挂件移动到另一个锚点"><i class="material-icons">link</i> 重新绑定</button>
           <button data-cem-action="reset-anchor" title="将选中挂件重置到当前锚点"><i class="material-icons">my_location</i> 重置到锚点</button>
           <button data-cem-action="export" title="导出模型"><i class="material-icons">save</i> 导出模型</button>
           <button data-cem-action="build" title="创建资源包"><i class="material-icons">create_new_folder</i> 创建资源包</button>
@@ -1340,6 +1410,7 @@ SOFTWARE.
     studioPanel.node.querySelector('[data-cem-action="apply-entity"]').addEventListener('click', applyStudioEntitySelection);
     studioPanel.node.querySelector('[data-cem-action="reference"]').addEventListener('click', addConfiguredReference);
     studioPanel.node.querySelector('[data-cem-action="render"]').addEventListener('click', showRenderSettingsDialog);
+    studioPanel.node.querySelector('[data-cem-action="rebind"]').addEventListener('click', showRebindAttachmentDialog);
     studioPanel.node.querySelector('[data-cem-action="reset-anchor"]').addEventListener('click', resetSelectedAttachments);
     studioPanel.node.querySelector('[data-cem-action="export"]').addEventListener('click', exportCurrentProject);
     studioPanel.node.querySelector('[data-cem-action="build"]').addEventListener('click', () => buildResourcePack('new'));
@@ -1550,11 +1621,55 @@ SOFTWARE.
     dialog.show();
   }
 
+  function showRebindAttachmentDialog() {
+    autoBindAttachments();
+    const selected = selectedAttachmentElements();
+    if (!selected.length) {
+      Blockbench.showMessageBox({title: 'CEM-S Studio attachment binding', message: '请先在 Outliner 中选择一个或多个用户 Cube、Mesh 或 Group。'});
+      return;
+    }
+    const settings = getSettings();
+    const reference = settings.reference || {};
+    if (!reference.root || reference.rig === 'none' || !Object.keys(reference.anchors || {}).length) {
+      Blockbench.showMessageBox({title: 'CEM-S Studio attachment binding', message: '请先为当前实体添加参考模型。'});
+      return;
+    }
+    const options = Object.fromEntries(Object.keys(reference.anchors).map(anchor => [anchor, anchor.replace(/_/g, ' ')]));
+    const currentAnchors = [...new Set(selected.map(element => attachmentBindingFor(element, reference)?.anchor).filter(Boolean))];
+    const initialAnchor = currentAnchors.length === 1 ? currentAnchors[0] : Object.keys(options)[0];
+    const dialog = new Dialog({
+      id: 'cem_s_studio_rebind_attachment',
+      title: `绑定挂件（${selected.length} 个部件）`,
+      form: {anchor: {label: '目标锚点', type: 'select', options, value: initialAnchor}},
+      onConfirm(result) {
+        dialog.hide();
+        const anchorGroup = findGroupByReference(reference.anchors[result.anchor]);
+        if (!anchorGroup) {
+          Blockbench.showMessageBox({title: 'CEM-S Studio attachment binding failed', message: `参考锚点“${result.anchor}”不存在，请重新添加参考模型。`});
+          return;
+        }
+        if (selected.some(element => element.type === 'group' && isInsideGroup(anchorGroup, element))) {
+          Blockbench.showMessageBox({title: 'CEM-S Studio attachment binding failed', message: '不能将 Group 绑定到自己的子级。'});
+          return;
+        }
+        Undo.initEdit({outliner: true, elements: selected});
+        selected.forEach(element => element.addTo(anchorGroup));
+        autoBindAttachments();
+        Project.saved = false;
+        Undo.finishEdit('Bind CEM-S attachments', {outliner: true, elements: selected});
+        globalThis.Canvas?.updateAll?.();
+        refreshStudioPanel();
+        Blockbench.showQuickMessage(`CEM-S Studio: 已将 ${selected.length} 个部件绑定到 ${result.anchor}。`);
+      }
+    });
+    dialog.show();
+  }
+
   function resetSelectedAttachments() {
     autoBindAttachments();
     const settings = getSettings();
     const reference = settings.reference || {};
-    const selected = (globalThis.Outliner?.selected || []).filter(element => reference.bindings?.[element.uuid || element.name]);
+    const selected = [...new Set(selectedAttachmentElements().map(element => attachmentBindingFor(element, reference)?.owner).filter(Boolean))];
     if (!selected.length) {
       Blockbench.showMessageBox({title: 'CEM-S Studio attachment reset', message: '请先选择一个已经拖入参考锚点的 Cube 或 Group。'});
       return;
@@ -1794,47 +1909,6 @@ SOFTWARE.
     });
   }
 
-  function showBindReferenceDialog() {
-    const group = selectedGroup();
-    if (!group || isReferenceGroup(group)) {
-      Blockbench.showMessageBox({title: 'CEM-S Studio binding', message: 'Select a custom Group in the Outliner before binding it. Reference groups cannot be bound.'});
-      return;
-    }
-    const settings = getSettings();
-    const reference = settings.reference;
-    if (!reference || reference.rig === 'none' || !reference.root) {
-      Blockbench.showMessageBox({title: 'CEM-S Studio binding', message: 'Add a Player Reference model before binding a group.'});
-      return;
-    }
-    const options = Object.fromEntries(Object.keys(reference.anchors).map(anchor => [anchor, anchor.replace(/_/g, ' ')]));
-    const dialog = new Dialog({
-      id: 'cem_s_studio_bind_reference',
-      title: 'Bind Group to Reference Anchor',
-      form: {anchor: {label: 'Anchor', type: 'select', options, value: 'body'}},
-      onConfirm(result) {
-        dialog.hide();
-        const anchorGroup = findGroupByReference(reference.anchors[result.anchor]);
-        if (!anchorGroup) {
-          Blockbench.showMessageBox({title: 'CEM-S Studio binding failed', message: `Reference anchor "${result.anchor}" is missing. Register the reference model again.`});
-          return;
-        }
-        if (isInsideGroup(anchorGroup, group)) {
-          Blockbench.showMessageBox({title: 'CEM-S Studio binding failed', message: 'A group cannot be bound to one of its own descendants.'});
-          return;
-        }
-        Undo.initEdit({outliner: true, elements: []});
-        group.addTo(anchorGroup);
-        const bindings = Object.assign({}, reference.bindings || {}, {[group.uuid || group.name]: result.anchor});
-        Project.cem_studio = Object.assign({}, settings, {reference: Object.assign({}, reference, {bindings})});
-        Project.saved = false;
-        Undo.finishEdit('Bind CEM-S attachment', {outliner: true, elements: []});
-        group.select?.();
-        Blockbench.showQuickMessage(`CEM-S Studio: bound ${group.name} to ${result.anchor}.`);
-      }
-    });
-    dialog.show();
-  }
-
   function exportCurrentProject() {
     autoBindAttachments();
     const elements = [...(Cube.all || []), ...(globalThis.Mesh?.all || [])].filter(element => !isReferenceCube(element, getSettings().reference));
@@ -1998,7 +2072,7 @@ SOFTWARE.
     addReferenceAction = new Action('cem_s_studio_add_reference', {name: 'Add Entity Reference Model', icon: 'accessibility', category: 'tools', condition: () => Format === projectFormat && !!Project, click: addConfiguredReference});
     importReferenceAction = new Action('cem_s_studio_import_reference', {name: 'Import Vanilla Reference Model (.bbmodel)', icon: 'folder_open', category: 'tools', condition: () => Format === projectFormat && !!Project, click: importReferenceModel});
     registerReferenceAction = new Action('cem_s_studio_register_reference', {name: 'Register Selected Group as Reference Model', icon: 'bookmark', category: 'tools', condition: () => Format === projectFormat && !!Project, click: registerSelectedReference});
-    bindReferenceAction = new Action('cem_s_studio_bind_reference', {name: 'Bind Selected Group to Reference Anchor', icon: 'link', category: 'tools', condition: () => Format === projectFormat && !!Project, click: showBindReferenceDialog});
+    bindReferenceAction = new Action('cem_s_studio_bind_reference', {name: 'Bind or Move Selected Parts to Reference Anchor', icon: 'link', category: 'tools', condition: () => Format === projectFormat && !!Project, click: showRebindAttachmentDialog});
     renderSettingsAction = new Action('cem_s_studio_render_settings', {name: 'CEM-S Render Properties', icon: 'palette', category: 'tools', condition: () => Format === projectFormat && !!Project, click: showRenderSettingsDialog});
     resetAttachmentAction = new Action('cem_s_studio_reset_attachment', {name: 'Reset Attachment to Anchor', icon: 'my_location', category: 'tools', condition: () => Format === projectFormat && !!Project, click: resetSelectedAttachments});
     studioMenu = new BarMenu('cem_s_studio', [

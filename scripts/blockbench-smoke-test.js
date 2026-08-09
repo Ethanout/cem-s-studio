@@ -157,21 +157,36 @@ async function main() {
           referenceTextureAbsent: !Texture.all.some(texture => texture.name === 'CEM-S Player Reference')
         };
         const authorCube = Cube.all.find(cube => cube.name === 'body' && !cube.name.startsWith('[CEM-S Reference]'));
+        const secondAttachment = new Cube({name: 'Smoke Attachment 2', from: [0, 0, 0], to: [2, 2, 2]}).init();
         const bodyAnchor = Group.all.find(group => group.uuid === Project.cem_studio.reference.anchors.body);
         authorCube.addTo(bodyAnchor);
+        secondAttachment.addTo(bodyAnchor);
         Blockbench.dispatchEvent('update_selection');
         await new Promise(resolve => setTimeout(resolve, 0));
-        const realtimeBound = Project.cem_studio.reference.bindings[authorCube.uuid] === 'body';
+        const realtimeBound = Project.cem_studio.reference.bindings[authorCube.uuid] === 'body' && Project.cem_studio.reference.bindings[secondAttachment.uuid] === 'body';
         const bindingTransformRecorded = Array.isArray(Project.cem_studio.reference.transforms?.[authorCube.uuid]?.position);
+        Outliner.selected.splice(0, Outliner.selected.length, authorCube, secondAttachment);
+        Blockbench.dispatchEvent('update_selection');
+        await new Promise(resolve => setTimeout(resolve, 0));
+        const selectionPanel = Panels?.cem_s_studio_panel;
+        const selectionDiagnostics = selectionPanel?.node?.textContent?.includes('2 个部件') && selectionPanel?.node?.textContent?.includes('位置偏移');
+        BarItems.cem_s_studio_bind_reference.click();
+        const rebindDialog = Dialog.open;
+        await rebindDialog.onConfirm({anchor: 'head'});
+        await new Promise(resolve => setTimeout(resolve, 0));
+        const headAnchor = Group.all.find(group => group.uuid === Project.cem_studio.reference.anchors.head);
+        const batchRebound = authorCube.parent === headAnchor && secondAttachment.parent === headAnchor && Project.cem_studio.reference.bindings[authorCube.uuid] === 'head' && Project.cem_studio.reference.bindings[secondAttachment.uuid] === 'head';
         authorCube.select();
         authorCube.origin.V3_set([3, 14, 2]);
         BarItems.cem_s_studio_reset_attachment.click();
-        const resetToAnchor = authorCube.origin.every((value, index) => value === bodyAnchor.origin[index]) && Project.cem_studio.reference.transforms[authorCube.uuid].position.every(value => value === 0);
+        const resetToAnchor = authorCube.origin.every((value, index) => value === headAnchor.origin[index]) && Project.cem_studio.reference.transforms[authorCube.uuid].position.every(value => value === 0);
         const authorRoot = new Group({name: 'Author Model'}).init();
         authorCube.addTo(authorRoot);
+        secondAttachment.addTo(authorRoot);
         Blockbench.dispatchEvent('update_selection');
         await new Promise(resolve => setTimeout(resolve, 0));
-        const realtimeUnbound = !Project.cem_studio.reference.bindings[authorCube.uuid];
+        const realtimeUnbound = !Project.cem_studio.reference.bindings[authorCube.uuid] && !Project.cem_studio.reference.bindings[secondAttachment.uuid];
+        secondAttachment.remove();
 
         globalThis.__cemSmokeStage = 'square_mesh';
         const squareMesh = new Mesh({name: 'Smoke Square', vertices: {}, faces: {}}).init();
@@ -245,8 +260,8 @@ async function main() {
             importReference: !!BarItems.cem_s_studio_import_reference,
             registerReference: !!BarItems.cem_s_studio_register_reference,
             bindReference: !!BarItems.cem_s_studio_bind_reference,
-            renderSettings: !!BarItems.cem_s_studio_render_settings,
-            resetAttachment: !!BarItems.cem_s_studio_reset_attachment
+          renderSettings: !!BarItems.cem_s_studio_render_settings,
+          resetAttachment: !!BarItems.cem_s_studio_reset_attachment
           },
           rawFormat: raw.format,
           parsedFormat: parsed.format,
@@ -259,6 +274,8 @@ async function main() {
           referenceState,
           realtimeBound,
           bindingTransformRecorded,
+          selectionDiagnostics,
+          batchRebound,
           resetToAnchor,
           realtimeUnbound,
           meshSquareExported,
