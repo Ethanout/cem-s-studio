@@ -2,7 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const root = path.resolve(__dirname, '..');
-const sources = ['src/cem-exporter.js', 'src/blockbench-adapter.js', 'src/cemst.js', 'src/reference-rigs.js', 'src/pack-builder.js'];
+const sources = ['src/cem-exporter.js', 'src/blockbench-adapter.js', 'src/entity-database.js', 'src/cemst.js', 'src/reference-rigs.js', 'src/pack-builder.js'];
 const {RUNTIME_PROFILES, sourcesFor} = require(path.join(root, 'src', 'cem-runtime.js'));
 const runtimeFiles = Object.fromEntries(Object.keys(RUNTIME_PROFILES).map(version => {
   const files = Object.fromEntries(Object.entries(sourcesFor(version)).map(([destination, vendorPath]) => {

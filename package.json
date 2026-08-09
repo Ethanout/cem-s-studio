@@ -1,6 +1,6 @@
 {
   "name": "cem-s-studio",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "description": "Blockbench project format and resource-pack builder for CEM-S on Minecraft 1.21.6, 1.21.11, and 26.1+",
   "scripts": {
@@ -8,6 +8,6 @@
     "vendor:runtime": "node scripts/vendor-cem-runtime.js",
     "test": "node --test test/**/*.test.js",
     "test:blockbench": "node scripts/blockbench-smoke-test.js",
-    "check": "npm run build && node --check cem_s_studio.js && node --check src/cem-exporter.js && node --check src/blockbench-adapter.js && node --check src/cemst.js && node --check src/pack-builder.js && node --check src/cem-runtime.js && node --check src/plugin-entry.js && node --check scripts/build-plugin.js && node --check scripts/vendor-cem-runtime.js && node --check scripts/blockbench-smoke-test.js"
+    "check": "npm run build && node --check cem_s_studio.js && node --check src/cem-exporter.js && node --check src/blockbench-adapter.js && node --check src/entity-database.js && node --check src/cemst.js && node --check src/pack-builder.js && node --check src/cem-runtime.js && node --check src/plugin-entry.js && node --check scripts/build-plugin.js && node --check scripts/vendor-cem-runtime.js && node --check scripts/blockbench-smoke-test.js"
   }
 }

@@ -85,7 +85,7 @@ async function main() {
     console.log('Blockbench smoke: loading plugin');
     const pluginPath = path.join(root, 'cem_s_studio.js');
     const load = await client.call('Runtime.evaluate', {
-      expression: `(async () => { try { await new Plugin().loadFromFile({path: ${JSON.stringify(pluginPath)}, name: ${JSON.stringify(pluginPath)}, content: ''}, false); return {ok: true}; } catch (error) { return {ok: false, message: error.stack || error.message}; } })()`,
+      expression: `(async () => { try { await new Plugin('cem_s_studio').loadFromFile({path: ${JSON.stringify(pluginPath)}, name: ${JSON.stringify(pluginPath)}, content: ''}, false); return {ok: true}; } catch (error) { return {ok: false, message: error.stack || error.message}; } })()`,
       returnByValue: true,
       awaitPromise: true
     });
@@ -114,6 +114,10 @@ async function main() {
         await new Promise(resolve => setTimeout(resolve, 20));
         const initialSetupFields = Object.keys(Dialog.open?.form?.form_config || {});
         if (Dialog.open) Dialog.open.hide();
+        BarItems.cem_s_studio_project_settings.click();
+        const setupDialog = Dialog.open;
+        await setupDialog.onConfirm({project_name: 'Smoke Pig', minecraft_version: '1.21.6', model_id: 1, entity_profile: 'pig', pack_name: 'Smoke Pack'});
+        const autoReferenceRig = Project.cem_studio.reference?.rig;
         Project.name = 'Smoke Pig';
         new Cube({name: 'body', from: [0, 0, 0], to: [4, 4, 4]}).init();
         const raw = Codecs.cemst.compile({raw: true});
@@ -141,6 +145,17 @@ async function main() {
           allUntextured: referenceGuides.every(cube => Object.values(cube.faces).every(face => !face.texture)),
           referenceTextureAbsent: !Texture.all.some(texture => texture.name === 'CEM-S Player Reference')
         };
+        const authorCube = Cube.all.find(cube => cube.name === 'body' && !cube.name.startsWith('[CEM-S Reference]'));
+        const bodyAnchor = Group.all.find(group => group.uuid === Project.cem_studio.reference.anchors.body);
+        authorCube.addTo(bodyAnchor);
+        Blockbench.dispatchEvent('update_selection');
+        await new Promise(resolve => setTimeout(resolve, 0));
+        const realtimeBound = Project.cem_studio.reference.bindings[authorCube.uuid] === 'body';
+        const authorRoot = new Group({name: 'Author Model'}).init();
+        authorCube.addTo(authorRoot);
+        Blockbench.dispatchEvent('update_selection');
+        await new Promise(resolve => setTimeout(resolve, 0));
+        const realtimeUnbound = !Project.cem_studio.reference.bindings[authorCube.uuid];
 
         const studioMenu = MenuBar.menus.cem_s_studio;
         return {
@@ -166,9 +181,12 @@ async function main() {
           formatVersion: parsed.formatVersion,
           projectName: parsed.project.name,
           projectHasSettings: !!Project.cem_studio,
+          autoReferenceRig,
           initialSetupFields,
           cubeCountAfterOpen: Cube.all.length,
           referenceState,
+          realtimeBound,
+          realtimeUnbound,
           settingsFields,
           advancedSettingsFields
         };
@@ -183,7 +201,7 @@ async function main() {
     if (probe.exceptionDetails) exceptions.push(probe.exceptionDetails.text);
     const result = probe.result.value;
     if (!result?.ok) throw new Error(result?.message || exceptions.join('\n') || 'Blockbench probe failed');
-    const required = [result.blockbenchVersion === '5.1.6', result.studioMenuName === 'CEM-S Studio', result.studioMenuLabel === 'CEM-S Studio', result.formatSelected, result.codecRegistered, result.actions.save, result.actions.settings, result.actions.advancedDetection, result.actions.buildPack, result.actions.updatePack, result.actions.addReference, result.actions.importReference, result.actions.registerReference, result.actions.bindReference, result.rawFormat === 'cemst', result.parsedFormat === 'cemst', result.formatVersion === 1, result.projectName === 'Smoke Pig', result.projectHasSettings, result.initialSetupFields.length === 7, result.cubeCountAfterOpen === 7, result.referenceState?.guideCount === 6, result.referenceState?.allVisible, result.referenceState?.allExcludedFromExport, result.referenceState?.allUntextured, result.referenceState?.referenceTextureAbsent, result.settingsFields.length === 7, result.settingsFields.includes('minecraft_version'), result.settingsFields.includes('model_id'), result.settingsFields.includes('target_entity'), result.settingsFields.includes('render_target'), result.settingsFields.includes('detection_preset'), result.advancedSettingsFields.includes('marker_x'), result.advancedSettingsFields.includes('face_count'), result.advancedSettingsFields.includes('face_number')];
+    const required = [result.blockbenchVersion === '5.1.6', result.studioMenuName === 'CEM-S Studio', result.studioMenuLabel === 'CEM-S Studio', result.formatSelected, result.codecRegistered, result.actions.save, result.actions.settings, result.actions.advancedDetection, result.actions.buildPack, result.actions.updatePack, result.actions.addReference, result.actions.importReference, result.actions.registerReference, result.actions.bindReference, result.rawFormat === 'cemst', result.parsedFormat === 'cemst', result.formatVersion === 1, result.projectName === 'Smoke Pig', result.projectHasSettings, result.autoReferenceRig === 'pig', result.initialSetupFields.length === 5, result.initialSetupFields.includes('entity_profile'), result.cubeCountAfterOpen === 7, result.referenceState?.guideCount === 6, result.referenceState?.allVisible, result.referenceState?.allExcludedFromExport, result.referenceState?.allUntextured, result.referenceState?.referenceTextureAbsent, result.realtimeBound, result.realtimeUnbound, result.settingsFields.length === 5, result.settingsFields.includes('minecraft_version'), result.settingsFields.includes('model_id'), result.settingsFields.includes('entity_profile'), result.advancedSettingsFields.includes('render_target'), result.advancedSettingsFields.includes('marker_x'), result.advancedSettingsFields.includes('face_count'), result.advancedSettingsFields.includes('face_number')];
     if (required.some(value => !value)) throw new Error(`Blockbench probe returned incomplete state: ${JSON.stringify(result)}`);
     const screenshot = await client.call('Page.captureScreenshot', {format: 'png'});
     const screenshotPath = path.join(os.tmpdir(), 'cem-s-studio-blockbench-smoke.png');

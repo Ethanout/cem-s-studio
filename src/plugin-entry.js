@@ -5,6 +5,7 @@
   const {REFERENCE_PREFIX, REFERENCE_CUBE_PREFIX, anchorsFor, guidesFor, isReferenceGroup} = CemSReferenceRigs;
   const {slugify, buildPackFiles, mergePackFiles} = CemSPackBuilder;
   const {loadRuntimeFiles} = CemSRuntime;
+  const {profileFor, optionsFor} = CemSEntityDatabase;
   let exportAction;
   let exportDialog;
   let settingsAction;
@@ -24,6 +25,7 @@
   let bindReferenceAction;
   let originalGenerateTemplate;
   let originalGenerateColorMapTemplate;
+  let bindingSyncInstalled = false;
 
   function defaultSettings() {
     return createProject({name: Project?.name || 'CEM-S Model'}).project;
@@ -42,9 +44,11 @@
 
   function setSettings(result) {
     const current = getSettings();
-    const presetName = result.detection_preset;
-    const currentDetection = current.detection;
     const value = (name, fallback) => result[name] === undefined || result[name] === '' ? fallback : result[name];
+    const version = value('minecraft_version', current.cemVersion);
+    const presetName = value('entity_profile', value('detection_preset', current.targetEntity));
+    const profile = profileFor(presetName, version);
+    const currentDetection = current.detection;
     const detection = presetName === 'custom' ? {
       preset: 'custom',
       channel: value('render_target', current.targetType),
@@ -62,10 +66,10 @@
       name: value('project_name', current.name),
       modelId: Number(value('model_id', current.modelId)),
       cemVersion: value('minecraft_version', current.cemVersion),
-      targetEntity: presetName === 'custom' ? value('target_entity', current.targetEntity) : presetName,
-      targetType: presetName === 'custom' ? value('render_target', current.targetType) : detection.channel,
+      targetEntity: presetName,
+      targetType: presetName === 'custom' ? value('render_target', current.targetType) : profile.targetType,
       detection,
-      resourcePack: {name: value('pack_name', current.resourcePack.name), description: value('pack_description', current.resourcePack.description), packFormat: SUPPORTED_CEM_VERSIONS[value('minecraft_version', current.cemVersion)]}
+      resourcePack: {name: value('pack_name', current.resourcePack.name), description: value('pack_description', current.resourcePack.description), packFormat: SUPPORTED_CEM_VERSIONS[version]}
     }).project;
     Project.cem_studio = next;
     Project.name = next.name;
@@ -78,12 +82,11 @@
       project_name: {label: 'Project name', type: 'text', value: settings.name},
       minecraft_version: {label: 'Minecraft version', description: 'Selects the bundled CEM-S core shaders and resource-pack format.', type: 'select', options: {'1.21.6': '1.21.6', '1.21.11': '1.21.11', '26.1+': '26.1+ (26.1.2 runtime)'}, value: settings.cemVersion},
       model_id: {label: 'Model ID', description: 'Keep this ID unique in the target resource pack.', type: 'number', value: settings.modelId, min: 0, step: 1},
-      target_entity: {label: 'Target entity', description: 'For example pig, sheep, or your custom entity identifier.', type: 'text', value: settings.targetEntity},
-      render_target: {label: 'Render target', description: 'Use Armor / Equipment for elytra and armor attachments.', type: 'select', options: {entity: 'Entity / Mob', armor: 'Armor / Equipment'}, value: settings.targetType},
-      detection_preset: {label: 'Entity preset', description: 'Presets fill the CEM-S detection values automatically.', type: 'select', options: {pig: 'Pig', cold_pig: 'Cold Pig', arrow: 'Arrow', sheep: 'Sheep', elytra: 'Elytra / Wings', custom: 'Custom'}, value: settings.detection.preset},
+      entity_profile: {label: 'Entity type', description: 'Chooses the reference model and CEM-S detection profile.', type: 'select', options: optionsFor(settings.cemVersion), value: settings.targetEntity},
       pack_name: {label: 'Resource pack name', type: 'text', value: settings.resourcePack.name}
     };
     if (advanced) Object.assign(form, {
+      render_target: {label: 'Render target', description: 'Use Armor / Equipment for elytra and armor attachments.', type: 'select', options: {entity: 'Entity / Mob', armor: 'Armor / Equipment'}, value: settings.targetType},
       marker_x: {label: 'Marker pixel X', type: 'number', value: settings.detection.pixel[0], min: 0, step: 1},
       marker_y: {label: 'Marker pixel Y', type: 'number', value: settings.detection.pixel[1], min: 0, step: 1},
       marker_r: {label: 'Marker red', type: 'number', value: settings.detection.color[0], min: 0, max: 255, step: 1},
@@ -106,6 +109,8 @@
         settingsDialog.hide();
         try {
           setSettings(result);
+          const selectedProfile = profileFor(result.entity_profile || result.detection_preset || getSettings().targetEntity, getSettings().cemVersion);
+          if (selectedProfile.referenceRig !== 'none' && !getSettings().reference?.root) addReferenceRig(selectedProfile.referenceRig);
           Blockbench.showQuickMessage('CEM-S Studio: project settings updated.');
         } catch (error) {
           Blockbench.showMessageBox({title: 'CEM-S Studio settings failed', message: error.message});
@@ -126,20 +131,36 @@
     const root = findGroupByReference(reference.root);
     if (!root) return;
     const anchorByGroup = new Map(Object.entries(reference.anchors).map(([name, id]) => [id, name]));
-    const bindings = Object.assign({}, reference.bindings || {});
-    for (const group of Group.all || []) {
-      if (isReferenceGroup(group) || group === root) continue;
-      let parent = group.parent;
-      while (parent && parent !== root && !anchorByGroup.has(parent.uuid) && !anchorByGroup.has(parent.name)) parent = parent.parent;
-      if (parent && parent !== root) {
-        const anchor = anchorByGroup.get(parent.uuid) || anchorByGroup.get(parent.name);
-        if (anchor) bindings[group.uuid || group.name] = anchor;
-      }
+    const bindings = {};
+    const candidates = [...(Group.all || []), ...(Cube.all || [])];
+    for (const element of candidates) {
+      if (element === root || isReferenceGroup(element) || isReferenceCube(element, reference)) continue;
+      const parent = element.parent;
+      const anchor = parent && (anchorByGroup.get(parent.uuid) || anchorByGroup.get(parent.name));
+      if (anchor) bindings[element.uuid || element.name] = anchor;
     }
     if (JSON.stringify(bindings) !== JSON.stringify(reference.bindings || {})) {
       Project.cem_studio = Object.assign({}, settings, {reference: Object.assign({}, reference, {bindings})});
       Project.saved = false;
     }
+  }
+
+  function syncBindingsAfterEdit() {
+    if (Format === projectFormat && Project?.cem_studio) autoBindAttachments();
+  }
+
+  function installBindingSync() {
+    if (bindingSyncInstalled) return;
+    Blockbench.on('finish_edit', syncBindingsAfterEdit);
+    Blockbench.on('update_selection', syncBindingsAfterEdit);
+    bindingSyncInstalled = true;
+  }
+
+  function uninstallBindingSync() {
+    if (!bindingSyncInstalled) return;
+    Blockbench.removeListener('finish_edit', syncBindingsAfterEdit);
+    Blockbench.removeListener('update_selection', syncBindingsAfterEdit);
+    bindingSyncInstalled = false;
   }
 
   function selectedGroup() {
@@ -185,18 +206,18 @@
     originalGenerateColorMapTemplate = null;
   }
 
-  function addPlayerReference() {
+  function addReferenceRig(rig = 'player') {
     const settings = getSettings();
     const existing = settings.reference?.root && findGroupByReference(settings.reference.root);
     if (existing) {
       existing.select?.();
-      Blockbench.showQuickMessage('CEM-S Studio: this project already has a Player Reference model.');
+      Blockbench.showQuickMessage('CEM-S Studio: this project already has a reference model.');
       return;
     }
-    const anchors = anchorsFor('player');
-    const guides = guidesFor('player');
+    const anchors = anchorsFor(rig);
+    const guides = guidesFor(rig);
     Undo.initEdit({outliner: true, elements: []});
-    const root = new Group({name: `${REFERENCE_PREFIX} / Player`, origin: [0, 0, 0]}).init();
+    const root = new Group({name: `${REFERENCE_PREFIX} / ${rig}`, origin: [0, 0, 0]}).init();
     const anchorNames = {};
     const created = [];
     for (const [anchorName, spec] of Object.entries(anchors)) {
@@ -217,11 +238,15 @@
         created.push(cube);
       }
     }
-    Project.cem_studio = Object.assign({}, settings, {reference: {rig: 'player', root: root.uuid || root.name, anchors: anchorNames, bindings: {}, guides: created.map(cube => cube.uuid).filter(Boolean)}});
+    Project.cem_studio = Object.assign({}, settings, {reference: {rig, root: root.uuid || root.name, anchors: anchorNames, bindings: {}, guides: created.map(cube => cube.uuid).filter(Boolean)}});
     Project.saved = false;
-    Undo.finishEdit('Add CEM-S Player Reference', {outliner: true, elements: created});
+    Undo.finishEdit(`Add CEM-S ${rig} Reference`, {outliner: true, elements: created});
     root.select?.();
-    Blockbench.showQuickMessage('CEM-S Studio: Player Reference added. Bind custom groups to its anchors.');
+    Blockbench.showQuickMessage(`CEM-S Studio: ${rig} reference added. Drag model groups into its anchors.`);
+  }
+
+  function addPlayerReference() {
+    addReferenceRig('player');
   }
 
   function isInsideGroup(element, root) {
@@ -532,14 +557,16 @@
     author: 'CEM-S Studio contributors',
     description: 'A Blockbench project format and resource-pack builder for CEM-S on Minecraft 1.21.6, 1.21.11, and 26.1+.',
     icon: 'extension',
-    version: '0.4.0',
+    version: '0.5.0',
     min_version: '4.12.0',
     variant: 'desktop',
     onload() {
       installProjectFormat();
       installTextureGeneratorGuard();
+      installBindingSync();
     },
     onunload() {
+      uninstallBindingSync();
       uninstallTextureGeneratorGuard();
       [saveAction, settingsAction, advancedSettingsAction, buildAction, updateBuildAction, exportAction, addReferenceAction, importReferenceAction, registerReferenceAction, bindReferenceAction].forEach(action => action && action.delete());
       if (studioMenu) studioMenu.delete?.();

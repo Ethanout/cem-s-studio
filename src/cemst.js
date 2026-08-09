@@ -1,18 +1,13 @@
 (function (root, factory) {
-  const api = factory();
+  const database = typeof module === 'object' && module.exports ? require('./entity-database.js') : root.CemSEntityDatabase;
+  const api = factory(database);
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.CemSProject = api;
-}(typeof globalThis === 'undefined' ? this : globalThis, function () {
+}(typeof globalThis === 'undefined' ? this : globalThis, function (entityDatabase) {
   const CURRENT_VERSION = 1;
   const SUPPORTED_CEM_VERSIONS = {'1.21.6': 63, '1.21.11': 75, '26.1+': 84};
-  const DETECTION_PRESETS = {
-    pig: {channel: 'entity', pixel: [63, 0], color: [255, 0, 0, 255], face: {mode: 'vertex_id', count: 42, index: 3}, reverse: true, corner: 'default', size: 1, hideUnmatched: false},
-    cold_pig: {channel: 'entity', pixel: [63, 0], color: [3, 0, 0, 255], face: {mode: 'vertex_id', count: 84, index: 3}, reverse: true, corner: 'default', size: 1, hideUnmatched: false},
-    arrow: {channel: 'entity', pixel: [31, 0], color: [0, 0, 1, 255], face: {mode: 'vertex_id', count: 9, index: 0}, reverse: true, corner: 'yx', size: 1.5, hideUnmatched: true},
-    sheep: {channel: 'entity', pixel: [63, 0], color: [2, 0, 0, 255], face: {mode: 'all', count: 1, index: 0}, reverse: false, corner: 'default', size: 1.2, hideUnmatched: false},
-    elytra: {channel: 'armor', pixel: [1, 0], color: [0, 0, 4, 255], face: {mode: 'vertex_id', count: 12, index: 5}, reverse: true, corner: 'default', size: 2, hideUnmatched: true},
-    custom: {channel: 'entity', pixel: [63, 0], color: [0, 0, 1, 255], face: {mode: 'vertex_id', count: 1, index: 0}, reverse: false, corner: 'yx', size: 1, hideUnmatched: false}
-  };
+  if (!entityDatabase) throw new Error('CEM-S entity database is required');
+  const DETECTION_PRESETS = Object.fromEntries(Object.keys(entityDatabase.ENTITY_PROFILES).map(id => [id, entityDatabase.ENTITY_PROFILES[id].detection]));
 
   function clone(value) {
     return JSON.parse(JSON.stringify(value));
@@ -23,8 +18,7 @@
   }
 
   function detectionForPreset(name) {
-    if (!Object.prototype.hasOwnProperty.call(DETECTION_PRESETS, name)) throw new Error(`unsupported detection preset: ${name}`);
-    return {preset: name, ...clone(DETECTION_PRESETS[name])};
+    return entityDatabase.detectionFor(name);
   }
 
   function normalizeDetection(input, fallbackPreset = 'pig') {
@@ -65,7 +59,7 @@
     if (!['entity', 'armor'].includes(document.project.targetType)) throw new Error('project.targetType must be entity or armor');
     if (document.project.targetType !== detection.channel) throw new Error('project.targetType must match detection.channel');
     const reference = document.project.reference || {rig: 'none', root: null, anchors: {}, bindings: {}, guides: []};
-    if (!['none', 'player', 'custom'].includes(reference.rig)) throw new Error('project.reference.rig must be none, player, or custom');
+    if (!['none', 'player', 'pig', 'elytra', 'arrow', 'custom'].includes(reference.rig)) throw new Error('project.reference.rig must be none, player, pig, elytra, arrow, or custom');
     if (reference.root !== null && typeof reference.root !== 'string') throw new Error('project.reference.root must be a string or null');
     if (!reference.anchors || typeof reference.anchors !== 'object' || Array.isArray(reference.anchors)) throw new Error('project.reference.anchors must be an object');
     if (reference.bindings !== undefined && (!reference.bindings || typeof reference.bindings !== 'object' || Array.isArray(reference.bindings))) throw new Error('project.reference.bindings must be an object');

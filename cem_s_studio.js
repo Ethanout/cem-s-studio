@@ -205,18 +205,91 @@ return {toCemModel, isReferenceCube};
 (function (root, factory) {
   const api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
-  root.CemSProject = api;
+  root.CemSEntityDatabase = api;
 }(typeof globalThis === 'undefined' ? this : globalThis, function () {
+  const SUPPORTED_VERSIONS = ['1.21.6', '1.21.11', '26.1+'];
+  const CUSTOM_DETECTION = {channel: 'entity', pixel: [63, 0], color: [0, 0, 1, 255], face: {mode: 'vertex_id', count: 1, index: 0}, reverse: false, corner: 'yx', size: 1, hideUnmatched: false};
+  const PROFILES = {
+    pig: {
+      name: 'Pig', category: 'quadruped', targetType: 'entity', referenceRig: 'pig', textureSize: [64, 32],
+      detection: {channel: 'entity', pixel: [63, 0], color: [255, 0, 0, 255], face: {mode: 'vertex_id', count: 42, index: 3}, reverse: true, corner: 'default', size: 1, hideUnmatched: false}
+    },
+    cold_pig: {
+      name: 'Cold Pig', category: 'quadruped', targetType: 'entity', referenceRig: 'pig', textureSize: [64, 64],
+      detection: {channel: 'entity', pixel: [63, 0], color: [3, 0, 0, 255], face: {mode: 'vertex_id', count: 84, index: 3}, reverse: true, corner: 'default', size: 1, hideUnmatched: false}
+    },
+    sheep: {
+      name: 'Sheep', category: 'quadruped', targetType: 'entity', referenceRig: 'pig', textureSize: [64, 32],
+      detection: {channel: 'entity', pixel: [63, 0], color: [2, 0, 0, 255], face: {mode: 'all', count: 1, index: 0}, reverse: false, corner: 'default', size: 1.2, hideUnmatched: false}
+    },
+    arrow: {
+      name: 'Arrow', category: 'projectile', targetType: 'entity', referenceRig: 'arrow', textureSize: [32, 32],
+      detection: {channel: 'entity', pixel: [31, 0], color: [0, 0, 1, 255], face: {mode: 'vertex_id', count: 9, index: 0}, reverse: true, corner: 'yx', size: 1.5, hideUnmatched: true}
+    },
+    elytra: {
+      name: 'Elytra / Wings', category: 'equipment', targetType: 'armor', referenceRig: 'elytra', textureSize: [64, 32],
+      detection: {channel: 'armor', pixel: [1, 0], color: [0, 0, 4, 255], face: {mode: 'vertex_id', count: 12, index: 5}, reverse: true, corner: 'default', size: 2, hideUnmatched: true}
+    },
+    player: {
+      name: 'Player (custom detection)', category: 'humanoid', targetType: 'entity', referenceRig: 'player', textureSize: [64, 64], expertDetection: true,
+      detection: CUSTOM_DETECTION
+    },
+    custom: {
+      name: 'Custom entity', category: 'custom', targetType: 'entity', referenceRig: 'none', textureSize: [64, 64], expertDetection: true,
+      detection: CUSTOM_DETECTION
+    }
+  };
+
+  function clone(value) {
+    return JSON.parse(JSON.stringify(value));
+  }
+
+  function assertVersion(version) {
+    if (!SUPPORTED_VERSIONS.includes(version)) throw new Error(`unsupported entity database version: ${version}`);
+  }
+
+  function profileFor(id, version = '1.21.6') {
+    assertVersion(version);
+    const profile = PROFILES[id];
+    if (!profile) throw new Error(`unsupported entity profile: ${id}`);
+    return {id, versions: SUPPORTED_VERSIONS.slice(), ...clone(profile)};
+  }
+
+  function profilesFor(version = '1.21.6') {
+    assertVersion(version);
+    return Object.keys(PROFILES).map(id => profileFor(id, version));
+  }
+
+  function detectionFor(id, version = '1.21.6') {
+    const profile = profileFor(id, version);
+    return {preset: id, ...clone(profile.detection)};
+  }
+
+  function optionsFor(version = '1.21.6') {
+    return Object.fromEntries(profilesFor(version).map(profile => [profile.id, profile.name]));
+  }
+
+  return {
+    SUPPORTED_VERSIONS: SUPPORTED_VERSIONS.slice(),
+    ENTITY_PROFILES: clone(PROFILES),
+    profileFor,
+    profilesFor,
+    detectionFor,
+    optionsFor
+  };
+}));
+
+
+(function (root, factory) {
+  const database = typeof module === 'object' && module.exports ? require('./entity-database.js') : root.CemSEntityDatabase;
+  const api = factory(database);
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  root.CemSProject = api;
+}(typeof globalThis === 'undefined' ? this : globalThis, function (entityDatabase) {
   const CURRENT_VERSION = 1;
   const SUPPORTED_CEM_VERSIONS = {'1.21.6': 63, '1.21.11': 75, '26.1+': 84};
-  const DETECTION_PRESETS = {
-    pig: {channel: 'entity', pixel: [63, 0], color: [255, 0, 0, 255], face: {mode: 'vertex_id', count: 42, index: 3}, reverse: true, corner: 'default', size: 1, hideUnmatched: false},
-    cold_pig: {channel: 'entity', pixel: [63, 0], color: [3, 0, 0, 255], face: {mode: 'vertex_id', count: 84, index: 3}, reverse: true, corner: 'default', size: 1, hideUnmatched: false},
-    arrow: {channel: 'entity', pixel: [31, 0], color: [0, 0, 1, 255], face: {mode: 'vertex_id', count: 9, index: 0}, reverse: true, corner: 'yx', size: 1.5, hideUnmatched: true},
-    sheep: {channel: 'entity', pixel: [63, 0], color: [2, 0, 0, 255], face: {mode: 'all', count: 1, index: 0}, reverse: false, corner: 'default', size: 1.2, hideUnmatched: false},
-    elytra: {channel: 'armor', pixel: [1, 0], color: [0, 0, 4, 255], face: {mode: 'vertex_id', count: 12, index: 5}, reverse: true, corner: 'default', size: 2, hideUnmatched: true},
-    custom: {channel: 'entity', pixel: [63, 0], color: [0, 0, 1, 255], face: {mode: 'vertex_id', count: 1, index: 0}, reverse: false, corner: 'yx', size: 1, hideUnmatched: false}
-  };
+  if (!entityDatabase) throw new Error('CEM-S entity database is required');
+  const DETECTION_PRESETS = Object.fromEntries(Object.keys(entityDatabase.ENTITY_PROFILES).map(id => [id, entityDatabase.ENTITY_PROFILES[id].detection]));
 
   function clone(value) {
     return JSON.parse(JSON.stringify(value));
@@ -227,8 +300,7 @@ return {toCemModel, isReferenceCube};
   }
 
   function detectionForPreset(name) {
-    if (!Object.prototype.hasOwnProperty.call(DETECTION_PRESETS, name)) throw new Error(`unsupported detection preset: ${name}`);
-    return {preset: name, ...clone(DETECTION_PRESETS[name])};
+    return entityDatabase.detectionFor(name);
   }
 
   function normalizeDetection(input, fallbackPreset = 'pig') {
@@ -269,7 +341,7 @@ return {toCemModel, isReferenceCube};
     if (!['entity', 'armor'].includes(document.project.targetType)) throw new Error('project.targetType must be entity or armor');
     if (document.project.targetType !== detection.channel) throw new Error('project.targetType must match detection.channel');
     const reference = document.project.reference || {rig: 'none', root: null, anchors: {}, bindings: {}, guides: []};
-    if (!['none', 'player', 'custom'].includes(reference.rig)) throw new Error('project.reference.rig must be none, player, or custom');
+    if (!['none', 'player', 'pig', 'elytra', 'arrow', 'custom'].includes(reference.rig)) throw new Error('project.reference.rig must be none, player, pig, elytra, arrow, or custom');
     if (reference.root !== null && typeof reference.root !== 'string') throw new Error('project.reference.root must be a string or null');
     if (!reference.anchors || typeof reference.anchors !== 'object' || Array.isArray(reference.anchors)) throw new Error('project.reference.anchors must be an object');
     if (reference.bindings !== undefined && (!reference.bindings || typeof reference.bindings !== 'object' || Array.isArray(reference.bindings))) throw new Error('project.reference.bindings must be an object');
@@ -355,6 +427,47 @@ return {toCemModel, isReferenceCube};
     right_leg: {from: [-4, 0, -2], to: [0, 12, 2], origin: [-1.9, 12, 0], uv: [0, 16]}
   };
 
+  const PIG_ANCHORS = {
+    root: {origin: [0, 0, 0]},
+    body: {origin: [0, 12, 0]},
+    head: {origin: [0, 12, -8]},
+    left_front_leg: {origin: [3, 6, -5]},
+    right_front_leg: {origin: [-3, 6, -5]},
+    left_hind_leg: {origin: [3, 6, 5]},
+    right_hind_leg: {origin: [-3, 6, 5]}
+  };
+
+  const PIG_GUIDES = {
+    body: {from: [-5, 6, -8], to: [5, 14, 8], origin: [0, 12, 0], uv: [28, 8]},
+    head: {from: [-4, 8, -14], to: [4, 16, -6], origin: [0, 12, -8], uv: [0, 0]},
+    left_front_leg: {from: [1, 0, -7], to: [5, 6, -3], origin: [3, 6, -5], uv: [0, 16]},
+    right_front_leg: {from: [-5, 0, -7], to: [-1, 6, -3], origin: [-3, 6, -5], uv: [0, 16]},
+    left_hind_leg: {from: [1, 0, 3], to: [5, 6, 7], origin: [3, 6, 5], uv: [0, 16]},
+    right_hind_leg: {from: [-5, 0, 3], to: [-1, 6, 7], origin: [-3, 6, 5], uv: [0, 16]}
+  };
+
+  const ELYTRA_ANCHORS = {
+    root: {origin: [0, 0, 0]},
+    body: {origin: [0, 24, 2]},
+    left_wing: {origin: [2, 23, 2]},
+    right_wing: {origin: [-2, 23, 2]}
+  };
+
+  const ELYTRA_GUIDES = {
+    body: {from: [-4, 12, -2], to: [4, 24, 2], origin: [0, 24, 0], uv: [16, 16]},
+    left_wing: {from: [0, 3, 2], to: [10, 23, 3], origin: [2, 23, 2], uv: [22, 0]},
+    right_wing: {from: [-10, 3, 2], to: [0, 23, 3], origin: [-2, 23, 2], uv: [22, 0]}
+  };
+
+  const ARROW_ANCHORS = {root: {origin: [0, 0, 0]}, shaft: {origin: [0, 8, 0]}};
+  const ARROW_GUIDES = {shaft: {from: [-0.5, 0, -0.5], to: [0.5, 16, 0.5], origin: [0, 8, 0], uv: [0, 0]}};
+  const RIGS = {
+    player: {anchors: PLAYER_ANCHORS, guides: PLAYER_GUIDES},
+    pig: {anchors: PIG_ANCHORS, guides: PIG_GUIDES},
+    elytra: {anchors: ELYTRA_ANCHORS, guides: ELYTRA_GUIDES},
+    arrow: {anchors: ARROW_ANCHORS, guides: ARROW_GUIDES}
+  };
+
   function clone(value) {
     return JSON.parse(JSON.stringify(value));
   }
@@ -368,16 +481,16 @@ return {toCemModel, isReferenceCube};
   }
 
   function anchorsFor(rig = 'player') {
-    if (rig !== 'player') throw new Error(`unsupported reference rig: ${rig}`);
-    return clone(PLAYER_ANCHORS);
+    if (!RIGS[rig]) throw new Error(`unsupported reference rig: ${rig}`);
+    return clone(RIGS[rig].anchors);
   }
 
   function guidesFor(rig = 'player') {
-    if (rig !== 'player') throw new Error(`unsupported reference rig: ${rig}`);
-    return clone(PLAYER_GUIDES);
+    if (!RIGS[rig]) throw new Error(`unsupported reference rig: ${rig}`);
+    return clone(RIGS[rig].guides);
   }
 
-  return {REFERENCE_PREFIX, REFERENCE_CUBE_PREFIX, PLAYER_ANCHORS: clone(PLAYER_ANCHORS), PLAYER_GUIDES: clone(PLAYER_GUIDES), anchorsFor, guidesFor, isReferenceCube, isReferenceGroup};
+  return {REFERENCE_PREFIX, REFERENCE_CUBE_PREFIX, PLAYER_ANCHORS: clone(PLAYER_ANCHORS), PLAYER_GUIDES: clone(PLAYER_GUIDES), RIGS: clone(RIGS), anchorsFor, guidesFor, isReferenceCube, isReferenceGroup};
 }));
 
 
@@ -554,6 +667,7 @@ SOFTWARE.
   const {REFERENCE_PREFIX, REFERENCE_CUBE_PREFIX, anchorsFor, guidesFor, isReferenceGroup} = CemSReferenceRigs;
   const {slugify, buildPackFiles, mergePackFiles} = CemSPackBuilder;
   const {loadRuntimeFiles} = CemSRuntime;
+  const {profileFor, optionsFor} = CemSEntityDatabase;
   let exportAction;
   let exportDialog;
   let settingsAction;
@@ -573,6 +687,7 @@ SOFTWARE.
   let bindReferenceAction;
   let originalGenerateTemplate;
   let originalGenerateColorMapTemplate;
+  let bindingSyncInstalled = false;
 
   function defaultSettings() {
     return createProject({name: Project?.name || 'CEM-S Model'}).project;
@@ -591,9 +706,11 @@ SOFTWARE.
 
   function setSettings(result) {
     const current = getSettings();
-    const presetName = result.detection_preset;
-    const currentDetection = current.detection;
     const value = (name, fallback) => result[name] === undefined || result[name] === '' ? fallback : result[name];
+    const version = value('minecraft_version', current.cemVersion);
+    const presetName = value('entity_profile', value('detection_preset', current.targetEntity));
+    const profile = profileFor(presetName, version);
+    const currentDetection = current.detection;
     const detection = presetName === 'custom' ? {
       preset: 'custom',
       channel: value('render_target', current.targetType),
@@ -611,10 +728,10 @@ SOFTWARE.
       name: value('project_name', current.name),
       modelId: Number(value('model_id', current.modelId)),
       cemVersion: value('minecraft_version', current.cemVersion),
-      targetEntity: presetName === 'custom' ? value('target_entity', current.targetEntity) : presetName,
-      targetType: presetName === 'custom' ? value('render_target', current.targetType) : detection.channel,
+      targetEntity: presetName,
+      targetType: presetName === 'custom' ? value('render_target', current.targetType) : profile.targetType,
       detection,
-      resourcePack: {name: value('pack_name', current.resourcePack.name), description: value('pack_description', current.resourcePack.description), packFormat: SUPPORTED_CEM_VERSIONS[value('minecraft_version', current.cemVersion)]}
+      resourcePack: {name: value('pack_name', current.resourcePack.name), description: value('pack_description', current.resourcePack.description), packFormat: SUPPORTED_CEM_VERSIONS[version]}
     }).project;
     Project.cem_studio = next;
     Project.name = next.name;
@@ -627,12 +744,11 @@ SOFTWARE.
       project_name: {label: 'Project name', type: 'text', value: settings.name},
       minecraft_version: {label: 'Minecraft version', description: 'Selects the bundled CEM-S core shaders and resource-pack format.', type: 'select', options: {'1.21.6': '1.21.6', '1.21.11': '1.21.11', '26.1+': '26.1+ (26.1.2 runtime)'}, value: settings.cemVersion},
       model_id: {label: 'Model ID', description: 'Keep this ID unique in the target resource pack.', type: 'number', value: settings.modelId, min: 0, step: 1},
-      target_entity: {label: 'Target entity', description: 'For example pig, sheep, or your custom entity identifier.', type: 'text', value: settings.targetEntity},
-      render_target: {label: 'Render target', description: 'Use Armor / Equipment for elytra and armor attachments.', type: 'select', options: {entity: 'Entity / Mob', armor: 'Armor / Equipment'}, value: settings.targetType},
-      detection_preset: {label: 'Entity preset', description: 'Presets fill the CEM-S detection values automatically.', type: 'select', options: {pig: 'Pig', cold_pig: 'Cold Pig', arrow: 'Arrow', sheep: 'Sheep', elytra: 'Elytra / Wings', custom: 'Custom'}, value: settings.detection.preset},
+      entity_profile: {label: 'Entity type', description: 'Chooses the reference model and CEM-S detection profile.', type: 'select', options: optionsFor(settings.cemVersion), value: settings.targetEntity},
       pack_name: {label: 'Resource pack name', type: 'text', value: settings.resourcePack.name}
     };
     if (advanced) Object.assign(form, {
+      render_target: {label: 'Render target', description: 'Use Armor / Equipment for elytra and armor attachments.', type: 'select', options: {entity: 'Entity / Mob', armor: 'Armor / Equipment'}, value: settings.targetType},
       marker_x: {label: 'Marker pixel X', type: 'number', value: settings.detection.pixel[0], min: 0, step: 1},
       marker_y: {label: 'Marker pixel Y', type: 'number', value: settings.detection.pixel[1], min: 0, step: 1},
       marker_r: {label: 'Marker red', type: 'number', value: settings.detection.color[0], min: 0, max: 255, step: 1},
@@ -655,6 +771,8 @@ SOFTWARE.
         settingsDialog.hide();
         try {
           setSettings(result);
+          const selectedProfile = profileFor(result.entity_profile || result.detection_preset || getSettings().targetEntity, getSettings().cemVersion);
+          if (selectedProfile.referenceRig !== 'none' && !getSettings().reference?.root) addReferenceRig(selectedProfile.referenceRig);
           Blockbench.showQuickMessage('CEM-S Studio: project settings updated.');
         } catch (error) {
           Blockbench.showMessageBox({title: 'CEM-S Studio settings failed', message: error.message});
@@ -675,20 +793,36 @@ SOFTWARE.
     const root = findGroupByReference(reference.root);
     if (!root) return;
     const anchorByGroup = new Map(Object.entries(reference.anchors).map(([name, id]) => [id, name]));
-    const bindings = Object.assign({}, reference.bindings || {});
-    for (const group of Group.all || []) {
-      if (isReferenceGroup(group) || group === root) continue;
-      let parent = group.parent;
-      while (parent && parent !== root && !anchorByGroup.has(parent.uuid) && !anchorByGroup.has(parent.name)) parent = parent.parent;
-      if (parent && parent !== root) {
-        const anchor = anchorByGroup.get(parent.uuid) || anchorByGroup.get(parent.name);
-        if (anchor) bindings[group.uuid || group.name] = anchor;
-      }
+    const bindings = {};
+    const candidates = [...(Group.all || []), ...(Cube.all || [])];
+    for (const element of candidates) {
+      if (element === root || isReferenceGroup(element) || isReferenceCube(element, reference)) continue;
+      const parent = element.parent;
+      const anchor = parent && (anchorByGroup.get(parent.uuid) || anchorByGroup.get(parent.name));
+      if (anchor) bindings[element.uuid || element.name] = anchor;
     }
     if (JSON.stringify(bindings) !== JSON.stringify(reference.bindings || {})) {
       Project.cem_studio = Object.assign({}, settings, {reference: Object.assign({}, reference, {bindings})});
       Project.saved = false;
     }
+  }
+
+  function syncBindingsAfterEdit() {
+    if (Format === projectFormat && Project?.cem_studio) autoBindAttachments();
+  }
+
+  function installBindingSync() {
+    if (bindingSyncInstalled) return;
+    Blockbench.on('finish_edit', syncBindingsAfterEdit);
+    Blockbench.on('update_selection', syncBindingsAfterEdit);
+    bindingSyncInstalled = true;
+  }
+
+  function uninstallBindingSync() {
+    if (!bindingSyncInstalled) return;
+    Blockbench.removeListener('finish_edit', syncBindingsAfterEdit);
+    Blockbench.removeListener('update_selection', syncBindingsAfterEdit);
+    bindingSyncInstalled = false;
   }
 
   function selectedGroup() {
@@ -734,18 +868,18 @@ SOFTWARE.
     originalGenerateColorMapTemplate = null;
   }
 
-  function addPlayerReference() {
+  function addReferenceRig(rig = 'player') {
     const settings = getSettings();
     const existing = settings.reference?.root && findGroupByReference(settings.reference.root);
     if (existing) {
       existing.select?.();
-      Blockbench.showQuickMessage('CEM-S Studio: this project already has a Player Reference model.');
+      Blockbench.showQuickMessage('CEM-S Studio: this project already has a reference model.');
       return;
     }
-    const anchors = anchorsFor('player');
-    const guides = guidesFor('player');
+    const anchors = anchorsFor(rig);
+    const guides = guidesFor(rig);
     Undo.initEdit({outliner: true, elements: []});
-    const root = new Group({name: `${REFERENCE_PREFIX} / Player`, origin: [0, 0, 0]}).init();
+    const root = new Group({name: `${REFERENCE_PREFIX} / ${rig}`, origin: [0, 0, 0]}).init();
     const anchorNames = {};
     const created = [];
     for (const [anchorName, spec] of Object.entries(anchors)) {
@@ -766,11 +900,15 @@ SOFTWARE.
         created.push(cube);
       }
     }
-    Project.cem_studio = Object.assign({}, settings, {reference: {rig: 'player', root: root.uuid || root.name, anchors: anchorNames, bindings: {}, guides: created.map(cube => cube.uuid).filter(Boolean)}});
+    Project.cem_studio = Object.assign({}, settings, {reference: {rig, root: root.uuid || root.name, anchors: anchorNames, bindings: {}, guides: created.map(cube => cube.uuid).filter(Boolean)}});
     Project.saved = false;
-    Undo.finishEdit('Add CEM-S Player Reference', {outliner: true, elements: created});
+    Undo.finishEdit(`Add CEM-S ${rig} Reference`, {outliner: true, elements: created});
     root.select?.();
-    Blockbench.showQuickMessage('CEM-S Studio: Player Reference added. Bind custom groups to its anchors.');
+    Blockbench.showQuickMessage(`CEM-S Studio: ${rig} reference added. Drag model groups into its anchors.`);
+  }
+
+  function addPlayerReference() {
+    addReferenceRig('player');
   }
 
   function isInsideGroup(element, root) {
@@ -1081,14 +1219,16 @@ SOFTWARE.
     author: 'CEM-S Studio contributors',
     description: 'A Blockbench project format and resource-pack builder for CEM-S on Minecraft 1.21.6, 1.21.11, and 26.1+.',
     icon: 'extension',
-    version: '0.4.0',
+    version: '0.5.0',
     min_version: '4.12.0',
     variant: 'desktop',
     onload() {
       installProjectFormat();
       installTextureGeneratorGuard();
+      installBindingSync();
     },
     onunload() {
+      uninstallBindingSync();
       uninstallTextureGeneratorGuard();
       [saveAction, settingsAction, advancedSettingsAction, buildAction, updateBuildAction, exportAction, addReferenceAction, importReferenceAction, registerReferenceAction, bindReferenceAction].forEach(action => action && action.delete());
       if (studioMenu) studioMenu.delete?.();
