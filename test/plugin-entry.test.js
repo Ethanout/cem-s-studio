@@ -39,6 +39,8 @@ test('registers the CEM-S Studio project format and resource-pack workflow', () 
   assert.match(source, /data-cem-action="reset-anchor"/);
   assert.match(source, /data-cem-action="rebind"/);
   assert.match(source, /selectedAttachmentSummary/);
+  assert.match(source, /selectedAuthorGroups/);
+  assert.match(source, /cem_s_render =/);
   assert.match(source, /位置偏移/);
   assert.match(source, /showRebindAttachmentDialog/);
   assert.match(source, /data-cem-workspace="model"/);

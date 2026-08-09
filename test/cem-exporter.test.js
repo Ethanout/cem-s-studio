@@ -101,6 +101,14 @@ test('converts Blockbench CEM-S render properties without affecting default cube
   assert.deepEqual(rendered.parts[0].render, {emissive: true, perFaceLighting: false, tint: [128 / 255, 1, 64 / 255, 128 / 255]});
 });
 
+test('inherits Group render properties while allowing Cube overrides', () => {
+  const group = {name: 'Glow group', cem_s_render: {emissive: true, perFaceLighting: false, tint: '#80ff4080'}, parent: null};
+  const inherited = toCemModel('inherited', [{from: [0, 0, 0], to: [1, 1, 1], parent: group}]);
+  assert.deepEqual(inherited.parts[0].render, {emissive: true, perFaceLighting: false, tint: [128 / 255, 1, 64 / 255, 128 / 255]});
+  const override = toCemModel('override', [{from: [0, 0, 0], to: [1, 1, 1], parent: group, cem_s_render: {emissive: false, perFaceLighting: true, tint: '#ffffffff'}}]);
+  assert.equal(override.parts[0].render, undefined);
+});
+
 test('does not export registered reference guide cubes', () => {
   const model = toCemModel('pig', [
     {name: '[CEM-S Reference] body', uuid: 'guide-1', from: [0, 0, 0], to: [4, 4, 4]},

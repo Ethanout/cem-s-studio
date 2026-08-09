@@ -224,7 +224,24 @@ function anchorOriginForCube(cube, reference) {
 }
 
 function renderSettingsForCube(cube) {
-  const source = cube?.cem_s_render || cube?.cemSRender || {};
+  const source = {};
+  const chain = [];
+  let current = cube;
+  while (current) {
+    chain.unshift(current);
+    current = current.parent;
+  }
+  for (const element of chain) {
+    const settings = element?.cem_s_render || element?.cemSRender;
+    if (settings && typeof settings === 'object') Object.assign(source, settings);
+    for (const [key, aliases] of Object.entries({
+      emissive: ['cem_emissive', 'cemS_emissive'],
+      perFaceLighting: ['cem_per_face_lighting', 'cemS_per_face_lighting'],
+      tint: ['cem_tint', 'cemS_tint']
+    })) {
+      for (const alias of aliases) if (element?.[alias] !== undefined) source[key] = element[alias];
+    }
+  }
   const emissive = source.emissive ?? cube?.cem_emissive ?? cube?.cemS_emissive;
   const perFaceLighting = source.perFaceLighting ?? cube?.cem_per_face_lighting ?? cube?.cemS_per_face_lighting;
   const tint = source.tint ?? cube?.cem_tint ?? cube?.cemS_tint;

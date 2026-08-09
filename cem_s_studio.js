@@ -493,7 +493,24 @@ function anchorOriginForCube(cube, reference) {
 }
 
 function renderSettingsForCube(cube) {
-  const source = cube?.cem_s_render || cube?.cemSRender || {};
+  const source = {};
+  const chain = [];
+  let current = cube;
+  while (current) {
+    chain.unshift(current);
+    current = current.parent;
+  }
+  for (const element of chain) {
+    const settings = element?.cem_s_render || element?.cemSRender;
+    if (settings && typeof settings === 'object') Object.assign(source, settings);
+    for (const [key, aliases] of Object.entries({
+      emissive: ['cem_emissive', 'cemS_emissive'],
+      perFaceLighting: ['cem_per_face_lighting', 'cemS_per_face_lighting'],
+      tint: ['cem_tint', 'cemS_tint']
+    })) {
+      for (const alias of aliases) if (element?.[alias] !== undefined) source[key] = element[alias];
+    }
+  }
   const emissive = source.emissive ?? cube?.cem_emissive ?? cube?.cemS_emissive;
   const perFaceLighting = source.perFaceLighting ?? cube?.cem_per_face_lighting ?? cube?.cemS_per_face_lighting;
   const tint = source.tint ?? cube?.cem_tint ?? cube?.cemS_tint;
@@ -1880,20 +1897,28 @@ SOFTWARE.
     return [...cubes].filter(cube => !isReferenceCube(cube, settings.reference));
   }
 
+  function selectedAuthorGroups() {
+    const settings = getSettings();
+    return (globalThis.Outliner?.selected || []).filter(item => item?.type === 'group' && !isReferenceGroup(item) && !isReferenceCube(item, settings.reference));
+  }
+
   function showRenderSettingsDialog() {
     const cubes = selectedAuthorCubes();
-    if (!cubes.length) {
+    const groups = selectedAuthorGroups();
+    const targets = cubes.length ? cubes : groups;
+    if (!targets.length) {
       Blockbench.showMessageBox({title: 'CEM-S Studio render properties', message: '请先在 Outliner 中选择一个用户 Cube 或包含 Cube 的 Group。'});
       return;
     }
-    const first = cubes[0];
-    const tint = /^#[0-9a-f]{8}$/i.test(first.cem_tint || '') ? first.cem_tint : '#ffffffff';
+    const first = targets[0];
+    const firstRender = first.cem_s_render || first;
+    const tint = /^#[0-9a-f]{8}$/i.test(firstRender.tint || firstRender.cem_tint || '') ? (firstRender.tint || firstRender.cem_tint) : '#ffffffff';
     const dialog = new Dialog({
       id: 'cem_s_studio_render_settings',
       title: `渲染属性（${cubes.length} 个 Cube）`,
       form: {
-        emissive: {label: '发光', type: 'checkbox', value: !!first.cem_emissive},
-        per_face_lighting: {label: '逐面光照', type: 'checkbox', value: first.cem_per_face_lighting !== false},
+        emissive: {label: '发光', type: 'checkbox', value: !!(firstRender.emissive ?? firstRender.cem_emissive)},
+        per_face_lighting: {label: '逐面光照', type: 'checkbox', value: (firstRender.perFaceLighting ?? firstRender.cem_per_face_lighting) !== false},
         tint: {label: '颜色乘算', type: 'color', value: tint.slice(0, 7)},
         alpha: {label: '透明度', type: 'number', value: parseInt(tint.slice(7), 16), min: 0, max: 255, step: 1}
       },
@@ -1901,15 +1926,19 @@ SOFTWARE.
         dialog.hide();
         const rgb = String(result.tint || '#ffffff').replace('#', '').padEnd(6, 'f').slice(0, 6);
         const alpha = Math.max(0, Math.min(255, Math.round(Number(result.alpha)))).toString(16).padStart(2, '0');
-        Undo.initEdit({elements: cubes});
-        cubes.forEach(cube => {
-          cube.cem_emissive = !!result.emissive;
-          cube.cem_per_face_lighting = !!result.per_face_lighting;
-          cube.cem_tint = `#${rgb}${alpha}`;
+        Undo.initEdit({elements: targets});
+        targets.forEach(target => {
+          if (cubes.length) {
+            target.cem_emissive = !!result.emissive;
+            target.cem_per_face_lighting = !!result.per_face_lighting;
+            target.cem_tint = `#${rgb}${alpha}`;
+          } else {
+            target.cem_s_render = {emissive: !!result.emissive, perFaceLighting: !!result.per_face_lighting, tint: `#${rgb}${alpha}`};
+          }
         });
-        Undo.finishEdit('Change CEM-S render properties', {elements: cubes});
+        Undo.finishEdit('Change CEM-S render properties', {elements: targets});
         Project.saved = false;
-        Blockbench.showQuickMessage(`CEM-S Studio: 已更新 ${cubes.length} 个 Cube 的渲染属性。`);
+        Blockbench.showQuickMessage(`CEM-S Studio: 已更新 ${targets.length} 个${cubes.length ? 'Cube' : 'Group'}的渲染属性。`);
       }
     });
     dialog.show();
