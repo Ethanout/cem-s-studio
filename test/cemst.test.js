@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const {SUPPORTED_CEM_VERSIONS, createProject, serializeProject, parseProject, detectionForPreset} = require('../src/cemst.js');
+const {SUPPORTED_CEM_VERSIONS, createProject, createWorkspace, serializeProject, parseProject, detectionForPreset} = require('../src/cemst.js');
 const {buildPackFiles, mergePackFiles, upsertManagedSection} = require('../src/pack-builder.js');
 const {RUNTIME_PROFILES, loadRuntimeFiles, sourcesFor} = require('../src/cem-runtime.js');
 
@@ -27,6 +27,29 @@ test('serializes and parses a CEM-S Studio project without losing Blockbench dat
   const input = createProject({name: 'Demo', modelId: 2, blockbench: {meta: {model_format: 'cem_s_studio'}, outliner: []}});
   const output = parseProject(serializeProject(input));
   assert.deepEqual(output, input);
+});
+
+test('creates and round-trips a multi-model cemst workspace', () => {
+  const pig = createProject({name: 'Pig Jetpack', modelId: 7, targetEntity: 'pig'});
+  const elytra = createProject({name: 'Elytra Jetpack', modelId: 8, targetEntity: 'elytra', targetType: 'armor', detection: {preset: 'elytra'}});
+  const workspace = createWorkspace([pig, elytra], {modelIds: ['pig', 'elytra'], activeModel: 'elytra'});
+  assert.equal(workspace.formatVersion, 3);
+  assert.equal(workspace.workspace.activeModel, 'elytra');
+  assert.deepEqual(workspace.workspace.models.map(model => model.id), ['pig', 'elytra']);
+  assert.equal(workspace.project.modelId, 8);
+  const parsed = parseProject(serializeProject(workspace));
+  assert.equal(parsed.formatVersion, 3);
+  assert.equal(parsed.project.targetEntity, 'elytra');
+  assert.equal(parsed.workspace.models[0].project.targetEntity, 'pig');
+});
+
+test('rejects duplicate model IDs inside a cemst workspace', () => {
+  const workspace = createWorkspace([
+    createProject({name: 'One', modelId: 1}),
+    createProject({name: 'Two', modelId: 2})
+  ], {modelIds: ['one', 'two']});
+  workspace.workspace.models[1].project.modelId = workspace.workspace.models[0].project.modelId;
+  assert.throws(() => serializeProject(workspace), /duplicate workspace modelId/);
 });
 
 test('selects pack formats for Minecraft 1.21.11 and 26.1+', () => {

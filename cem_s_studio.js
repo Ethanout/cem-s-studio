@@ -682,7 +682,8 @@ return {toCemModel, toCemModels, bindingForCube, isReferenceCube};
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.CemSProject = api;
 }(typeof globalThis === 'undefined' ? this : globalThis, function (entityDatabase) {
-  const CURRENT_VERSION = 2;
+  const CURRENT_VERSION = 3;
+  const LEGACY_VERSION = 2;
   const SUPPORTED_CEM_VERSIONS = {'1.21.6': 63, '1.21.11': 75, '26.1+': 84};
   if (!entityDatabase) throw new Error('CEM-S entity database is required');
   const DETECTION_PRESETS = Object.fromEntries(Object.keys(entityDatabase.ENTITY_PROFILES).map(id => [id, entityDatabase.ENTITY_PROFILES[id].detection]));
@@ -693,6 +694,10 @@ return {toCemModel, toCemModels, bindingForCube, isReferenceCube};
 
   function assertModelId(value) {
     if (!Number.isInteger(value) || value < 0) throw new Error('modelId must be a non-negative integer');
+  }
+
+  function assertWorkspaceId(value) {
+    if (typeof value !== 'string' || !/^[a-z0-9][a-z0-9_-]*$/.test(value)) throw new Error('workspace model id must be a lowercase identifier');
   }
 
   function detectionForPreset(name, version = '1.21.6') {
@@ -746,7 +751,7 @@ return {toCemModel, toCemModels, bindingForCube, isReferenceCube};
 
   function validateProject(document) {
     if (!document || document.format !== 'cemst') throw new Error('not a CEM-S Studio project');
-    if (document.formatVersion !== CURRENT_VERSION) throw new Error(`unsupported cemst format version: ${document.formatVersion}`);
+    if (![LEGACY_VERSION, CURRENT_VERSION].includes(document.formatVersion)) throw new Error(`unsupported cemst format version: ${document.formatVersion}`);
     if (!document.project || typeof document.project.name !== 'string' || !document.project.name.trim()) throw new Error('project.name is required');
     assertModelId(document.project.modelId);
     if (!Object.prototype.hasOwnProperty.call(SUPPORTED_CEM_VERSIONS, document.project.cemVersion)) throw new Error(`unsupported Minecraft runtime: ${document.project.cemVersion}`);
@@ -812,7 +817,35 @@ return {toCemModel, toCemModels, bindingForCube, isReferenceCube};
     }
     if (reference.guides !== undefined && (!Array.isArray(reference.guides) || reference.guides.some(value => typeof value !== 'string'))) throw new Error('project.reference.guides must be an array of UUIDs');
     document.project.reference = {rig: reference.rig, root: reference.root || null, anchors: clone(reference.anchors), bindings: clone(reference.bindings || {}), transforms: clone(reference.transforms || {}), guides: clone(reference.guides || [])};
+    if (document.formatVersion === CURRENT_VERSION) validateWorkspace(document);
     return document;
+  }
+
+  function validateWorkspace(document) {
+    const workspace = document.workspace;
+    if (!workspace || workspace.version !== 1) throw new Error('workspace.version must be 1');
+    if (!Array.isArray(workspace.models) || workspace.models.length < 1) throw new Error('workspace.models must contain at least one model');
+    assertWorkspaceId(workspace.activeModel);
+    const ids = new Set();
+    const modelIds = new Set();
+    for (const [index, model] of workspace.models.entries()) {
+      if (!model || typeof model !== 'object') throw new Error(`workspace.models[${index}] must be an object`);
+      assertWorkspaceId(model.id);
+      if (ids.has(model.id)) throw new Error(`duplicate workspace model id: ${model.id}`);
+      ids.add(model.id);
+      if (!model.project || !model.blockbench) throw new Error(`workspace.models[${index}] must contain project and blockbench`);
+      assertModelId(model.project.modelId);
+      if (modelIds.has(model.project.modelId)) throw new Error(`duplicate workspace modelId: ${model.project.modelId}`);
+      modelIds.add(model.project.modelId);
+      validateProject({format: 'cemst', formatVersion: LEGACY_VERSION, project: model.project, blockbench: model.blockbench});
+    }
+    if (!ids.has(workspace.activeModel)) throw new Error(`workspace.activeModel does not exist: ${workspace.activeModel}`);
+    const active = workspace.models.find(model => model.id === workspace.activeModel);
+    if (active.project.modelId !== document.project.modelId) throw new Error('workspace.activeModel must match project.modelId');
+  }
+
+  function workspaceEntry(document, id) {
+    return {id, project: clone(document.project), blockbench: clone(document.blockbench)};
   }
 
   function createProject(options = {}) {
@@ -829,7 +862,7 @@ return {toCemModel, toCemModels, bindingForCube, isReferenceCube};
     assertModelId(modelId);
     return {
       format: 'cemst',
-      formatVersion: CURRENT_VERSION,
+      formatVersion: LEGACY_VERSION,
       project: {
         name,
         modelId,
@@ -849,20 +882,58 @@ return {toCemModel, toCemModels, bindingForCube, isReferenceCube};
     };
   }
 
+  function createWorkspace(models, options = {}) {
+    if (!Array.isArray(models) || !models.length) throw new Error('workspace requires at least one model');
+    const documents = models.map(model => model?.format === 'cemst' ? parseProject(model) : createProject(model));
+    const ids = new Set();
+    const entries = documents.map((document, index) => {
+      const requested = options.modelIds?.[index] || document.project.workspaceId || document.project.name.toLowerCase().replace(/[^a-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '') || `model_${index + 1}`;
+      let id = requested;
+      let suffix = 2;
+      while (ids.has(id)) id = `${requested}_${suffix++}`;
+      assertWorkspaceId(id);
+      ids.add(id);
+      return workspaceEntry(document, id);
+    });
+    const activeModel = options.activeModel || entries[0].id;
+    if (!ids.has(activeModel)) throw new Error(`workspace.activeModel does not exist: ${activeModel}`);
+    const active = entries.find(model => model.id === activeModel);
+    return {
+      format: 'cemst',
+      formatVersion: CURRENT_VERSION,
+      workspace: {version: 1, activeModel, models: entries},
+      project: clone(active.project),
+      blockbench: clone(active.blockbench)
+    };
+  }
+
   function serializeProject(document) {
-    validateProject(document);
-    return JSON.stringify(document, null, 2);
+    const normalized = clone(document);
+    if (normalized.formatVersion === CURRENT_VERSION && normalized.workspace) {
+      const active = normalized.workspace.models.find(model => model.id === normalized.workspace.activeModel);
+      if (!active) throw new Error(`workspace.activeModel does not exist: ${normalized.workspace.activeModel}`);
+      active.project = clone(normalized.project);
+      active.blockbench = clone(normalized.blockbench);
+    }
+    validateProject(normalized);
+    return JSON.stringify(normalized, null, 2);
   }
 
   function parseProject(content) {
     const document = typeof content === 'string' ? JSON.parse(content) : clone(content);
-    if (document?.format === 'cemst' && document.formatVersion === 1) document.formatVersion = CURRENT_VERSION;
+    if (document?.format === 'cemst' && document.formatVersion === 1) document.formatVersion = LEGACY_VERSION;
+    if (document?.format === 'cemst' && document.formatVersion === CURRENT_VERSION && document.workspace) {
+      const active = document.workspace.models?.find(model => model.id === document.workspace.activeModel);
+      if (!active) throw new Error(`workspace.activeModel does not exist: ${document.workspace.activeModel}`);
+      document.project = clone(active.project);
+      document.blockbench = clone(active.blockbench);
+    }
     if (document?.project && !document.project.cemVersion) document.project.cemVersion = '1.21.6';
     if (document?.project?.detection) document.project.detection = normalizeDetection(document.project.detection, 'custom', document.project.cemVersion || '1.21.6');
     return clone(validateProject(document));
   }
 
-  return {CURRENT_VERSION, SUPPORTED_CEM_VERSIONS: clone(SUPPORTED_CEM_VERSIONS), DETECTION_PRESETS: clone(DETECTION_PRESETS), detectionForPreset, createProject, serializeProject, parseProject, validateProject};
+  return {CURRENT_VERSION, SUPPORTED_CEM_VERSIONS: clone(SUPPORTED_CEM_VERSIONS), DETECTION_PRESETS: clone(DETECTION_PRESETS), detectionForPreset, createProject, createWorkspace, serializeProject, parseProject, validateProject, validateWorkspace};
 }));
 
 
