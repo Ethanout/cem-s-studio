@@ -1,7 +1,7 @@
 (function () {
   const {exportModel, exportModels} = CemSExporter;
   const {toCemModels, isReferenceCube} = CemSBlockbenchAdapter;
-  const {SUPPORTED_CEM_VERSIONS, createProject, parseProject, serializeProject, detectionForPreset} = CemSProject;
+  const {CURRENT_VERSION, SUPPORTED_CEM_VERSIONS, createProject, createWorkspace, parseProject, serializeProject, detectionForPreset} = CemSProject;
   const {REFERENCE_PREFIX, REFERENCE_CUBE_PREFIX, anchorsFor, guidesFor, isReferenceGroup} = CemSReferenceRigs;
   const {slugify, buildPackFiles, mergePackFiles} = CemSPackBuilder;
   const {loadRuntimeFiles} = CemSRuntime;
@@ -27,6 +27,7 @@
   let bindReferenceAction;
   let renderSettingsAction;
   let resetAttachmentAction;
+  let addWorkspaceModelAction;
   const renderProperties = [];
   let originalGenerateTemplate;
   let originalGenerateColorMapTemplate;
@@ -123,6 +124,7 @@
     if (!studioPanel?.node) return;
     const state = studioPanelState();
     const {settings} = state;
+    populateWorkspaceBrowser();
     const entityName = profileFor(settings.targetEntity, settings.cemVersion)?.name || settings.targetEntity || '未选择';
     const referenceLabel = state.hasReference ? `${state.anchorCount} 个锚点` : '未添加';
     const transformCount = Object.keys(settings.reference?.transforms || {}).length;
@@ -152,6 +154,25 @@
     if (resetButton) resetButton.disabled = state.selection.boundCount === 0;
     const entitySelect = studioPanel.node.querySelector('[data-cem-entity="profile"]');
     if (entitySelect && entitySelect.dataset.version !== settings.cemVersion) populateStudioEntityBrowser();
+  }
+
+  function populateWorkspaceBrowser() {
+    const select = studioPanel?.node?.querySelector('[data-cem-workspace="model"]');
+    const state = studioPanel?.node?.querySelector('[data-cem-workspace="state"]');
+    if (!select || !state) return;
+    const workspace = Project?.cem_workspace;
+    if (!workspace?.models?.length) {
+      const settings = getSettings();
+      select.innerHTML = `<option value="__current">${settings.name || '当前模型'}</option>`;
+      select.value = '__current';
+      select.disabled = true;
+      state.textContent = '单模型项目';
+      return;
+    }
+    select.disabled = false;
+    select.innerHTML = workspace.models.map(model => `<option value="${model.id}">${model.project.name} · ID ${model.project.modelId}</option>`).join('');
+    select.value = workspace.activeModel;
+    state.textContent = `${workspace.models.length} 个模型 · 当前 ${workspace.activeModel}`;
   }
 
   function populateStudioEntityBrowser() {
@@ -217,6 +238,15 @@
         <div data-cem-state="textures" style="margin-bottom: 8px"></div>
         <div data-cem-state="next" style="margin-bottom: 8px; color: var(--color-bright)"></div>
         <div style="border-top: 1px solid var(--color-border); padding-top: 8px; margin-bottom: 8px">
+          <div style="font-weight: 600; margin-bottom: 4px">CEM-S 工作区</div>
+          <div data-cem-workspace="state" style="margin-bottom: 4px">单模型项目</div>
+          <div style="display: grid; grid-template-columns: 1fr auto; gap: 4px">
+            <select data-cem-workspace="model" aria-label="工作区模型"></select>
+            <button data-cem-action="switch-workspace" title="切换工作区模型"><i class="material-icons">swap_horiz</i></button>
+          </div>
+          <button data-cem-action="add-workspace" title="添加模型到当前 .cemst 工作区" style="width: 100%; margin-top: 4px"><i class="material-icons">add</i> 添加模型</button>
+        </div>
+        <div style="border-top: 1px solid var(--color-border); padding-top: 8px; margin-bottom: 8px">
           <div style="font-weight: 600; margin-bottom: 4px">选中挂件</div>
           <div data-cem-selection="summary" style="margin-bottom: 4px">未选择用户部件</div>
           <div data-cem-selection="details" style="font-size: 0.9em; opacity: 0.8" hidden>
@@ -249,17 +279,111 @@
     studioPanel.node.querySelector('[data-cem-action="render"]').addEventListener('click', showRenderSettingsDialog);
     studioPanel.node.querySelector('[data-cem-action="rebind"]').addEventListener('click', showRebindAttachmentDialog);
     studioPanel.node.querySelector('[data-cem-action="reset-anchor"]').addEventListener('click', resetSelectedAttachments);
+    studioPanel.node.querySelector('[data-cem-action="switch-workspace"]').addEventListener('click', () => {
+      const id = studioPanel.node.querySelector('[data-cem-workspace="model"]')?.value;
+      if (id && id !== '__current') switchWorkspaceModel(id);
+    });
+    studioPanel.node.querySelector('[data-cem-action="add-workspace"]').addEventListener('click', addWorkspaceModel);
     studioPanel.node.querySelector('[data-cem-action="export"]').addEventListener('click', exportCurrentProject);
     studioPanel.node.querySelector('[data-cem-action="build"]').addEventListener('click', () => buildResourcePack('new'));
     populateStudioEntityBrowser();
     refreshStudioPanel();
   }
 
-  function currentDocument() {
+  function currentSingleDocument() {
     const blockbench = baseProjectCodec.compile({raw: true});
     blockbench.meta = Object.assign({}, blockbench.meta, {model_format: 'cem_s_studio'});
     const settings = getSettings();
     return createProject({...settings, name: Project.name || settings.name, blockbench});
+  }
+
+  function currentDocument() {
+    const document = currentSingleDocument();
+    const workspace = Project?.cem_workspace ? JSON.parse(JSON.stringify(Project.cem_workspace)) : null;
+    if (!workspace?.models?.length) return document;
+    const active = workspace.models.find(model => model.id === workspace.activeModel);
+    if (!active) throw new Error(`workspace.activeModel does not exist: ${workspace.activeModel}`);
+    active.project = JSON.parse(JSON.stringify(document.project));
+    active.blockbench = JSON.parse(JSON.stringify(document.blockbench));
+    return {format: 'cemst', formatVersion: CURRENT_VERSION, workspace, project: document.project, blockbench: document.blockbench};
+  }
+
+  function ensureWorkspace() {
+    if (Project?.cem_workspace?.models?.length) return Project.cem_workspace;
+    const document = currentSingleDocument();
+    const id = slugify(document.project.name);
+    const workspace = createWorkspace([document], {modelIds: [id], activeModel: id}).workspace;
+    Project.cem_workspace = workspace;
+    Project.saved = false;
+    return workspace;
+  }
+
+  function switchWorkspaceModel(id) {
+    try {
+      delete globalThis.__cemStudioLastWorkspaceError;
+      const document = currentDocument();
+      const workspace = document.workspace;
+      const target = workspace.models.find(model => model.id === id);
+      if (!target) throw new Error(`workspace model does not exist: ${id}`);
+      workspace.activeModel = id;
+      const loaded = parseProject({format: 'cemst', formatVersion: CURRENT_VERSION, workspace, project: target.project, blockbench: target.blockbench});
+      baseProjectCodec.parse(loaded.blockbench, Project.save_path || 'cem_s_studio_workspace.bbmodel');
+      Project.cem_studio = loaded.project;
+      Project.cem_workspace = loaded.workspace;
+      Project.name = loaded.project.name;
+      Project.saved = false;
+      setTimeout(() => { refreshStudioPanel(); globalThis.Canvas?.updateAll?.(); }, 0);
+      Blockbench.showQuickMessage(`CEM-S Studio: 已切换到 ${target.project.name}。`);
+    } catch (error) {
+      Blockbench.showMessageBox({title: 'CEM-S Studio workspace switch failed', message: error.message});
+    }
+  }
+
+  function addWorkspaceModel() {
+    const workspace = ensureWorkspace();
+    const current = getSettings();
+    const form = {
+      project_name: {label: '模型名称', type: 'text', value: 'New CEM-S Model'},
+      minecraft_version: {label: 'Minecraft 版本', type: 'select', options: {'1.21.6': '1.21.6', '1.21.11': '1.21.11', '26.1+': '26.1+'}, value: current.cemVersion},
+      model_id: {label: '模型 ID', type: 'number', value: Math.max(...workspace.models.map(model => model.project.modelId), 0) + 1, min: 0, step: 1},
+      entity_profile: {label: '实体类型', type: 'select', options: optionsFor(current.cemVersion), value: current.targetEntity}
+    };
+    const dialog = new Dialog({
+      id: 'cem_s_studio_add_workspace_model',
+      title: '添加 CEM-S 模型',
+      form,
+      onConfirm(result) {
+        dialog.hide();
+        try {
+          const name = String(result.project_name || '').trim();
+          const modelId = Number(result.model_id);
+          const version = result.minecraft_version || current.cemVersion;
+          const entity = result.entity_profile || current.targetEntity;
+          if (!name) throw new Error('模型名称不能为空。');
+          if (workspace.models.some(model => model.project.modelId === modelId)) throw new Error(`模型 ID ${modelId} 已在工作区中使用。`);
+          const blankBlockbench = JSON.parse(JSON.stringify(currentSingleDocument().blockbench));
+          blankBlockbench.name = name;
+          blankBlockbench.model_identifier = slugify(name);
+          blankBlockbench.elements = [];
+          blankBlockbench.groups = [];
+          blankBlockbench.outliner = [];
+          blankBlockbench.textures = [];
+          const model = createProject({name, modelId, cemVersion: version, targetEntity: entity, blockbench: blankBlockbench});
+          let id = slugify(name);
+          let suffix = 2;
+          while (workspace.models.some(existing => existing.id === id)) id = `${slugify(name)}_${suffix++}`;
+          workspace.models.push({id, project: model.project, blockbench: model.blockbench});
+          Project.cem_workspace = workspace;
+          Project.saved = false;
+          switchWorkspaceModel(id);
+          const profile = profileFor(entity, version);
+          if (profile.referenceRig !== 'none' && !getSettings().reference?.root) addReferenceRig(profile.referenceRig);
+        } catch (error) {
+          Blockbench.showMessageBox({title: 'CEM-S Studio workspace model failed', message: error.message});
+        }
+      }
+    });
+    dialog.show();
   }
 
   function setSettings(result) {
@@ -870,6 +994,7 @@
         document.blockbench.meta = Object.assign({}, document.blockbench.meta, {model_format: 'cem_s_studio'});
         baseProjectCodec.parse(document.blockbench, path);
         Project.cem_studio = document.project;
+        Project.cem_workspace = document.formatVersion === CURRENT_VERSION ? document.workspace : null;
         Project.name = document.project.name;
       }
     });
@@ -893,6 +1018,7 @@
       onSetup() {
         if (!Project.cem_studio) {
           Project.cem_studio = defaultSettings();
+          Project.cem_workspace = null;
           setTimeout(() => {
             if (Format === projectFormat && Project?.cem_studio) showProjectSettings(false);
           }, 0);
@@ -912,6 +1038,7 @@
     bindReferenceAction = new Action('cem_s_studio_bind_reference', {name: 'Bind or Move Selected Parts to Reference Anchor', icon: 'link', category: 'tools', condition: () => Format === projectFormat && !!Project, click: showRebindAttachmentDialog});
     renderSettingsAction = new Action('cem_s_studio_render_settings', {name: 'CEM-S Render Properties', icon: 'palette', category: 'tools', condition: () => Format === projectFormat && !!Project, click: showRenderSettingsDialog});
     resetAttachmentAction = new Action('cem_s_studio_reset_attachment', {name: 'Reset Attachment to Anchor', icon: 'my_location', category: 'tools', condition: () => Format === projectFormat && !!Project, click: resetSelectedAttachments});
+    addWorkspaceModelAction = new Action('cem_s_studio_add_workspace_model', {name: 'Add Model to CEM-S Workspace', icon: 'add', category: 'tools', condition: () => Format === projectFormat && !!Project, click: addWorkspaceModel});
     studioMenu = new BarMenu('cem_s_studio', [
       settingsAction,
       addReferenceAction,
@@ -920,6 +1047,7 @@
       bindReferenceAction,
       renderSettingsAction,
       resetAttachmentAction,
+      addWorkspaceModelAction,
       buildAction,
       updateBuildAction,
       advancedSettingsAction,
@@ -947,7 +1075,7 @@
     onunload() {
       uninstallBindingSync();
       uninstallTextureGeneratorGuard();
-      [saveAction, settingsAction, advancedSettingsAction, buildAction, updateBuildAction, exportAction, addReferenceAction, importReferenceAction, registerReferenceAction, bindReferenceAction, renderSettingsAction, resetAttachmentAction].forEach(action => action && action.delete());
+      [saveAction, settingsAction, advancedSettingsAction, buildAction, updateBuildAction, exportAction, addReferenceAction, importReferenceAction, registerReferenceAction, bindReferenceAction, renderSettingsAction, resetAttachmentAction, addWorkspaceModelAction].forEach(action => action && action.delete());
       if (studioMenu) studioMenu.delete?.();
       if (studioPanel) { studioPanel.delete?.(); studioPanel = null; }
       [exportDialog, settingsDialog, buildDialog].forEach(dialog => dialog && dialog.delete());
