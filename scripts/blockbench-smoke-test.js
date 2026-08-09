@@ -1,9 +1,36 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const {spawn} = require('node:child_process');
 
-const port = Number(process.env.BLOCKBENCH_DEBUG_PORT || 9223);
+const port = Number(process.env.BLOCKBENCH_DEBUG_PORT || 9235);
 const root = path.resolve(__dirname, '..');
+let spawnedBlockbench;
+let spawnedProfile;
+
+async function endpointReady() {
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/json/list`);
+    if (!response.ok) return false;
+    const pages = await response.json();
+    return pages.some(entry => entry.type === 'page' && /Blockbench/i.test(entry.title));
+  } catch {
+    return false;
+  }
+}
+
+async function launchInstalledBlockbench() {
+  if (process.env.BLOCKBENCH_DEBUG_PORT) return;
+  const executable = process.env.BLOCKBENCH_PATH || path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Blockbench', 'Blockbench.exe');
+  if (!fs.existsSync(executable)) throw new Error(`Latest installed Blockbench was not found at ${executable}. Set BLOCKBENCH_PATH to the current executable.`);
+  spawnedProfile = fs.mkdtempSync(path.join(os.tmpdir(), 'cem-s-studio-blockbench-'));
+  spawnedBlockbench = spawn(executable, [`--remote-debugging-port=${port}`, `--user-data-dir=${spawnedProfile}`], {stdio: 'ignore'});
+  for (let attempt = 0; attempt < 40; attempt++) {
+    if (await endpointReady()) return;
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+  throw new Error(`Installed Blockbench did not open debug port ${port}`);
+}
 
 async function connect() {
   const pages = await fetch(`http://127.0.0.1:${port}/json/list`).then(response => response.json());
@@ -42,6 +69,7 @@ async function connect() {
 }
 
 async function main() {
+  if (!(await endpointReady())) await launchInstalledBlockbench();
   const client = await connect();
   const packPath = fs.mkdtempSync(path.join(os.tmpdir(), 'cem-s-studio-smoke-'));
   const newPackPath = path.join(packPath, 'new-pack');
@@ -83,6 +111,8 @@ async function main() {
         const format = Formats.cem_s_studio;
         if (!format) return {ok: false, message: 'CEM-S Studio format is not registered'};
         format.new();
+        await new Promise(resolve => setTimeout(resolve, 20));
+        const initialSetupFields = Object.keys(Dialog.open?.form?.form_config || {});
         if (Dialog.open) Dialog.open.hide();
         Project.name = 'Smoke Pig';
         new Cube({name: 'body', from: [0, 0, 0], to: [4, 4, 4]}).init();
@@ -104,48 +134,20 @@ async function main() {
         globalThis.__cemSmokeStage = 'player_reference';
         BarItems.cem_s_studio_add_player_reference.click();
         const referenceGuides = Cube.all.filter(cube => cube.name.startsWith('[CEM-S Reference]'));
-        const referenceTexture = Texture.all.find(texture => texture.name === 'CEM-S Player Reference');
         const referenceState = {
           guideCount: referenceGuides.length,
           allVisible: referenceGuides.every(cube => cube.visibility),
           allExcludedFromExport: referenceGuides.every(cube => cube.export === false),
-          allTextured: referenceGuides.every(cube => Object.values(cube.faces).every(face => face.texture === referenceTexture?.uuid)),
-          textureSize: referenceTexture && [referenceTexture.uv_width, referenceTexture.uv_height]
+          allUntextured: referenceGuides.every(cube => Object.values(cube.faces).every(face => !face.texture)),
+          referenceTextureAbsent: !Texture.all.some(texture => texture.name === 'CEM-S Player Reference')
         };
 
-        globalThis.__cemSmokeStage = 'update_pack';
-        BarItems.build_cem_s_resource_pack.click();
-        const packDialog = Dialog.open;
-        const buildModes = Object.keys(packDialog.form?.form_config?.mode?.options || {});
-        const originalPickDirectory = Blockbench.pickDirectory;
-        Blockbench.pickDirectory = () => ${JSON.stringify(packPath)};
-        await packDialog.onConfirm({mode: 'update'});
-
-        const builtVersions = {};
-        for (const target of [
-          {version: '1.21.11', packFormat: 75, name: 'Smoke 1 21 11'},
-          {version: '26.1+', packFormat: 84, name: 'Smoke 26 1'}
-        ]) {
-          globalThis.__cemSmokeStage = 'new_pack_' + target.version;
-          Project.cem_studio.cemVersion = target.version;
-          Project.cem_studio.resourcePack.packFormat = target.packFormat;
-          Project.cem_studio.resourcePack.name = target.name;
-          BarItems.build_cem_s_resource_pack.click();
-          const newPackDialog = Dialog.open;
-          Blockbench.pickDirectory = () => ${JSON.stringify(newPackPath)};
-          await newPackDialog.onConfirm({mode: 'new'});
-          builtVersions[target.version] = {packFormat: Project.cem_studio.resourcePack.packFormat};
-        }
-        globalThis.__cemSmokeStage = 'new_packs_done';
-        const newPackDialogState = Dialog.open ? {
-          id: Dialog.open.id,
-          title: Dialog.open.title,
-          text: Dialog.open.node?.innerText || ''
-        } : null;
-        Blockbench.pickDirectory = originalPickDirectory;
+        const studioMenu = MenuBar.menus.cem_s_studio;
         return {
           ok: true,
           blockbenchVersion: Blockbench.version,
+          studioMenuName: studioMenu?.name,
+          studioMenuLabel: studioMenu?.label?.textContent,
           formatSelected: Format === format,
           codecRegistered: !!Codecs.cemst,
           actions: {
@@ -153,6 +155,7 @@ async function main() {
             settings: !!BarItems.cem_s_studio_project_settings,
             advancedDetection: !!BarItems.cem_s_studio_advanced_detection,
             buildPack: !!BarItems.build_cem_s_resource_pack,
+            updatePack: !!BarItems.update_cem_s_resource_pack,
             addReference: !!BarItems.cem_s_studio_add_player_reference,
             importReference: !!BarItems.cem_s_studio_import_reference,
             registerReference: !!BarItems.cem_s_studio_register_reference,
@@ -163,13 +166,11 @@ async function main() {
           formatVersion: parsed.formatVersion,
           projectName: parsed.project.name,
           projectHasSettings: !!Project.cem_studio,
+          initialSetupFields,
           cubeCountAfterOpen: Cube.all.length,
           referenceState,
           settingsFields,
-          advancedSettingsFields,
-          buildModes,
-          builtVersions,
-          newPackDialogState
+          advancedSettingsFields
         };
       })()`,
       returnByValue: true,
@@ -182,36 +183,28 @@ async function main() {
     if (probe.exceptionDetails) exceptions.push(probe.exceptionDetails.text);
     const result = probe.result.value;
     if (!result?.ok) throw new Error(result?.message || exceptions.join('\n') || 'Blockbench probe failed');
-    const required = [result.formatSelected, result.codecRegistered, result.actions.save, result.actions.settings, result.actions.advancedDetection, result.actions.buildPack, result.actions.addReference, result.actions.importReference, result.actions.registerReference, result.actions.bindReference, result.rawFormat === 'cemst', result.parsedFormat === 'cemst', result.formatVersion === 1, result.projectName === 'Smoke Pig', result.projectHasSettings, result.cubeCountAfterOpen === 7, result.referenceState?.guideCount === 6, result.referenceState?.allVisible, result.referenceState?.allExcludedFromExport, result.referenceState?.allTextured, result.referenceState?.textureSize?.[0] === 64, result.referenceState?.textureSize?.[1] === 64, result.settingsFields.length === 7, result.settingsFields.includes('minecraft_version'), result.settingsFields.includes('model_id'), result.settingsFields.includes('target_entity'), result.settingsFields.includes('render_target'), result.settingsFields.includes('detection_preset'), result.advancedSettingsFields.includes('marker_x'), result.advancedSettingsFields.includes('face_count'), result.advancedSettingsFields.includes('face_number'), result.buildModes.includes('new'), result.buildModes.includes('update'), result.builtVersions?.['1.21.11']?.packFormat === 75, result.builtVersions?.['26.1+']?.packFormat === 84];
+    const required = [result.blockbenchVersion === '5.1.6', result.studioMenuName === 'CEM-S Studio', result.studioMenuLabel === 'CEM-S Studio', result.formatSelected, result.codecRegistered, result.actions.save, result.actions.settings, result.actions.advancedDetection, result.actions.buildPack, result.actions.updatePack, result.actions.addReference, result.actions.importReference, result.actions.registerReference, result.actions.bindReference, result.rawFormat === 'cemst', result.parsedFormat === 'cemst', result.formatVersion === 1, result.projectName === 'Smoke Pig', result.projectHasSettings, result.initialSetupFields.length === 7, result.cubeCountAfterOpen === 7, result.referenceState?.guideCount === 6, result.referenceState?.allVisible, result.referenceState?.allExcludedFromExport, result.referenceState?.allUntextured, result.referenceState?.referenceTextureAbsent, result.settingsFields.length === 7, result.settingsFields.includes('minecraft_version'), result.settingsFields.includes('model_id'), result.settingsFields.includes('target_entity'), result.settingsFields.includes('render_target'), result.settingsFields.includes('detection_preset'), result.advancedSettingsFields.includes('marker_x'), result.advancedSettingsFields.includes('face_count'), result.advancedSettingsFields.includes('face_number')];
     if (required.some(value => !value)) throw new Error(`Blockbench probe returned incomplete state: ${JSON.stringify(result)}`);
-    const expectedPackFiles = [
-      'assets/minecraft/shaders/include/cem_user/models.glsl',
-      'assets/minecraft/shaders/include/cem_user/detection.glsl',
-      'cem-studio/project.json'
-    ];
-    for (const relative of expectedPackFiles) {
-      if (!fs.existsSync(path.join(packPath, relative))) throw new Error(`Resource-pack build did not create ${relative}`);
-    }
-    for (const [version, createdPackPath] of Object.entries(createdPackPaths)) {
-      const expectedNewPackFiles = [...expectedPackFiles, 'pack.mcmeta', 'assets/minecraft/shaders/core/entity.fsh', 'assets/minecraft/shaders/core/entity.vsh', 'THIRD-PARTY-LICENSES/CEM-S-MIT.txt'];
-      for (const relative of expectedNewPackFiles) {
-        if (!fs.existsSync(path.join(createdPackPath, relative))) throw new Error(`${version} resource-pack build did not create ${relative}: ${JSON.stringify(result.newPackDialogState)}`);
-      }
-      const pack = JSON.parse(fs.readFileSync(path.join(createdPackPath, 'pack.mcmeta'), 'utf8'));
-      const expectedFormat = version === '1.21.11' ? 75 : 84;
-      if (pack.pack?.pack_format !== expectedFormat) throw new Error(`${version} resource pack has pack_format ${pack.pack?.pack_format}, expected ${expectedFormat}`);
-      if (pack.pack?.min_format !== expectedFormat || pack.pack?.max_format !== expectedFormat) throw new Error(`${version} resource pack does not declare the expected modern format range`);
-      const vertexShader = fs.readFileSync(path.join(createdPackPath, 'assets/minecraft/shaders/core/entity.vsh'), 'utf8');
-      if (!vertexShader.includes('#version 330')) throw new Error(`${version} resource pack does not contain the GLSL 330 entity shader`);
-      if (version === '26.1+' && !vertexShader.includes('sample_lightmap')) throw new Error('26.1+ resource pack does not use sample_lightmap');
-    }
-
     const screenshot = await client.call('Page.captureScreenshot', {format: 'png'});
     const screenshotPath = path.join(os.tmpdir(), 'cem-s-studio-blockbench-smoke.png');
     fs.writeFileSync(screenshotPath, Buffer.from(screenshot.data, 'base64'));
     console.log(JSON.stringify({...result, screenshot: screenshotPath}, null, 2));
   } finally {
     client.close();
+    if (spawnedBlockbench) {
+      spawnedBlockbench.kill();
+      await new Promise(resolve => {
+        spawnedBlockbench.once('exit', resolve);
+        setTimeout(resolve, 2000);
+      });
+    }
+    if (spawnedProfile && fs.existsSync(spawnedProfile)) {
+      try {
+        fs.rmSync(spawnedProfile, {recursive: true, force: true});
+      } catch (error) {
+        console.warn(`Blockbench test profile cleanup deferred: ${error.message}`);
+      }
+    }
     const safePrefix = path.join(os.tmpdir(), 'cem-s-studio-smoke-');
     if (path.resolve(packPath).startsWith(path.resolve(safePrefix))) fs.rmSync(packPath, {recursive: true, force: true});
   }

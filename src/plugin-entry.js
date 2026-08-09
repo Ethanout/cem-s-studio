@@ -494,7 +494,12 @@
       centered_grid: true,
       codec: projectCodec,
       onSetup() {
-        if (!Project.cem_studio) Project.cem_studio = defaultSettings();
+        if (!Project.cem_studio) {
+          Project.cem_studio = defaultSettings();
+          setTimeout(() => {
+            if (Format === projectFormat && Project?.cem_studio) showProjectSettings(false);
+          }, 0);
+        }
       }
     });
     projectCodec.format = projectFormat;
@@ -508,7 +513,7 @@
     importReferenceAction = new Action('cem_s_studio_import_reference', {name: 'Import Vanilla Reference Model (.bbmodel)', icon: 'folder_open', category: 'tools', condition: () => Format === projectFormat && !!Project, click: importReferenceModel});
     registerReferenceAction = new Action('cem_s_studio_register_reference', {name: 'Register Selected Group as Reference Model', icon: 'bookmark', category: 'tools', condition: () => Format === projectFormat && !!Project, click: registerSelectedReference});
     bindReferenceAction = new Action('cem_s_studio_bind_reference', {name: 'Bind Selected Group to Reference Anchor', icon: 'link', category: 'tools', condition: () => Format === projectFormat && !!Project, click: showBindReferenceDialog});
-    studioMenu = new Menu('CEM-S Studio', [
+    studioMenu = new BarMenu('cem_s_studio', [
       settingsAction,
       addReferenceAction,
       importReferenceAction,
@@ -518,7 +523,7 @@
       updateBuildAction,
       advancedSettingsAction,
       saveAction
-    ]);
+    ], {name: 'CEM-S Studio', icon: 'extension', condition: () => Format === projectFormat && !!Project});
     MenuBar.addMenu(studioMenu, 'tools');
   }
 
