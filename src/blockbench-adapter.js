@@ -68,7 +68,11 @@ function bakedTransform(cube, from, to) {
   };
 }
 
-function toCemPart(cube, index) {
+function subtract(a, b) {
+  return a.map((value, index) => value - b[index]);
+}
+
+function toCemPart(cube, index, anchorOrigin = [0, 0, 0]) {
   const from = vec3(cube.from, [0, 0, 0]);
   const to = vec3(cube.to, [0, 0, 0]);
   const faceOrder = ['down', 'up', 'north', 'east', 'south', 'west'];
@@ -86,11 +90,14 @@ function toCemPart(cube, index) {
   const part = {
     name: cube.name || `cube_${index + 1}`,
     type: 'cube',
-    origin: baked ? baked.origin : to.map((value, axis) => (value + from[axis]) / 2),
+    origin: subtract(baked ? baked.origin : to.map((value, axis) => (value + from[axis]) / 2), anchorOrigin),
     size: baked ? baked.size : to.map((value, axis) => (value - from[axis]) / 2),
     // CEM-S's ADD_BOX_ROTATE subtracts rotPivot after applying Rotation;
     // negating Blockbench's pivot yields the standard rotate-around-pivot transform.
-    pivot: baked ? baked.pivot : vec3(cube.origin, from).map((value) => value === 0 ? 0 : -value),
+    pivot: baked ? baked.pivot : vec3(cube.origin, from).map((value, axis) => {
+      const shifted = anchorOrigin[axis] - value;
+      return shifted === 0 ? 0 : shifted;
+    }),
     rotation
   };
   if (baked) part.rotationMatrix = baked.rotationMatrix;
@@ -103,11 +110,52 @@ function isReferenceCube(cube, reference) {
   return typeof cube?.name === 'string' && cube.name.startsWith('[CEM-S Reference]');
 }
 
+function bindingForCube(cube, reference) {
+  const bindings = reference?.bindings || {};
+  let element = cube;
+  while (element) {
+    const key = element.uuid || element.name;
+    if (key && Object.prototype.hasOwnProperty.call(bindings, key)) return bindings[key];
+    element = element.parent;
+  }
+  return null;
+}
+
+function anchorOriginForCube(cube, reference) {
+  const anchor = bindingForCube(cube, reference);
+  if (!anchor) return [0, 0, 0];
+  const referenceId = reference?.anchors?.[anchor];
+  if (!referenceId) throw new Error(`bound reference anchor "${anchor}" is missing`);
+  let element = cube.parent;
+  while (element) {
+    if (element.uuid === referenceId || element.name === referenceId) return vec3(element.origin, [0, 0, 0]);
+    element = element.parent;
+  }
+  throw new Error(`bound reference anchor "${anchor}" is not present in the Outliner`);
+}
+
 function toCemModel(name, cubes, options = {}) {
   if (!Array.isArray(cubes)) throw new Error('cubes must be an array');
   const exportable = options.includeReference ? cubes : cubes.filter((cube) => !isReferenceCube(cube, options.reference));
-  return {name: name || 'cem_model', parts: exportable.map(toCemPart)};
+  return {name: name || 'cem_model', parts: exportable.map((cube, index) => toCemPart(cube, index, anchorOriginForCube(cube, options.reference)))};
 }
 
-return {toCemModel, isReferenceCube};
+function toCemModels(name, cubes, options = {}) {
+  const branches = options.branches || [];
+  if (!Array.isArray(branches) || !branches.length) throw new Error('detection branches are required');
+  if (branches.length === 1) return [{branch: branches[0], model: toCemModel(name, cubes, options)}];
+  const buckets = new Map(branches.map(branch => [branch.anchor, []]));
+  for (const cube of cubes.filter(item => options.includeReference || !isReferenceCube(item, options.reference))) {
+    const anchor = bindingForCube(cube, options.reference);
+    if (!anchor) throw new Error(`cube "${cube.name || 'unnamed'}" is not inside a detection anchor`);
+    else if (buckets.has(anchor)) buckets.get(anchor).push(cube);
+    else throw new Error(`cube "${cube.name || 'unnamed'}" is bound to anchor "${anchor}", but no detection branch targets it`);
+  }
+  return branches.map(branch => ({
+    branch,
+    model: toCemModel(`${name || 'cem_model'}_${branch.id}`, buckets.get(branch.anchor), options)
+  }));
+}
+
+return {toCemModel, toCemModels, bindingForCube, isReferenceCube};
 }));

@@ -1,6 +1,6 @@
 (function () {
-  const {exportModel} = CemSExporter;
-  const {toCemModel, isReferenceCube} = CemSBlockbenchAdapter;
+  const {exportModel, exportModels} = CemSExporter;
+  const {toCemModels, isReferenceCube} = CemSBlockbenchAdapter;
   const {SUPPORTED_CEM_VERSIONS, createProject, parseProject, serializeProject, detectionForPreset} = CemSProject;
   const {REFERENCE_PREFIX, REFERENCE_CUBE_PREFIX, anchorsFor, guidesFor, isReferenceGroup} = CemSReferenceRigs;
   const {slugify, buildPackFiles, mergePackFiles} = CemSPackBuilder;
@@ -49,16 +49,20 @@
     const presetName = value('entity_profile', value('detection_preset', current.targetEntity));
     const profile = profileFor(presetName, version);
     const currentDetection = current.detection;
+    const currentBranch = currentDetection.branches[0];
     const detection = presetName === 'custom' ? {
       preset: 'custom',
       channel: value('render_target', current.targetType),
       mode: 'texture_marker',
       pixel: [Number(value('marker_x', currentDetection.pixel[0])), Number(value('marker_y', currentDetection.pixel[1]))],
       color: [value('marker_r', currentDetection.color[0]), value('marker_g', currentDetection.color[1]), value('marker_b', currentDetection.color[2]), value('marker_a', currentDetection.color[3])].map(Number),
-      face: {mode: 'vertex_id', count: Number(value('face_count', currentDetection.face.count)), index: Number(value('face_number', currentDetection.face.index))},
-      reverse: result.reverse === undefined ? currentDetection.reverse : !!result.reverse,
-      corner: result.corner_yx === undefined ? currentDetection.corner : (result.corner_yx ? 'yx' : 'default'),
-      size: Number(value('cem_size', currentDetection.size)),
+      branches: [{
+        id: 'main', anchor: null, modelIdOffset: 0,
+        match: {mode: 'vertex_id', count: Number(value('face_count', currentBranch.match.count)), index: Number(value('face_number', currentBranch.match.index))},
+        reverse: result.reverse === undefined ? currentBranch.reverse : !!result.reverse,
+        corner: result.corner_yx === undefined ? currentBranch.corner : (result.corner_yx ? 'yx' : 'default'),
+        size: Number(value('cem_size', currentBranch.size)), modelScale: currentBranch.modelScale || 8
+      }],
       hideUnmatched: result.hide_unmatched === undefined ? currentDetection.hideUnmatched : !!result.hide_unmatched
     } : detectionForPreset(presetName);
     const next = createProject({
@@ -78,6 +82,7 @@
 
   function showProjectSettings(advanced = false) {
     const settings = getSettings();
+    const primaryBranch = settings.detection.branches[0];
     const form = {
       project_name: {label: 'Project name', type: 'text', value: settings.name},
       minecraft_version: {label: 'Minecraft version', description: 'Selects the bundled CEM-S core shaders and resource-pack format.', type: 'select', options: {'1.21.6': '1.21.6', '1.21.11': '1.21.11', '26.1+': '26.1+ (26.1.2 runtime)'}, value: settings.cemVersion},
@@ -93,11 +98,11 @@
       marker_g: {label: 'Marker green', type: 'number', value: settings.detection.color[1], min: 0, max: 255, step: 1},
       marker_b: {label: 'Marker blue', type: 'number', value: settings.detection.color[2], min: 0, max: 255, step: 1},
       marker_a: {label: 'Marker alpha', type: 'number', value: settings.detection.color[3], min: 0, max: 255, step: 1},
-      face_count: {label: 'Faces per entity', description: 'Usually vanilla model cube count multiplied by 6.', type: 'number', value: settings.detection.face.count, min: 1, step: 1},
-      face_number: {label: 'Anchor face', description: 'Zero-based face index used as the CEM-S anchor.', type: 'number', value: settings.detection.face.index, min: 0, step: 1},
-      reverse: {label: 'Reverse model axes', type: 'checkbox', value: settings.detection.reverse},
-      corner_yx: {label: 'Transpose anchor corners', type: 'checkbox', value: settings.detection.corner === 'yx'},
-      cem_size: {label: 'CEM area size', type: 'number', value: settings.detection.size, min: 0.01, step: 0.1},
+      face_count: {label: 'Faces per entity', description: 'Usually vanilla model cube count multiplied by 6.', type: 'number', value: primaryBranch.match.count || 1, min: 1, step: 1},
+      face_number: {label: 'Anchor face', description: 'Zero-based face index used as the CEM-S anchor.', type: 'number', value: primaryBranch.match.index || 0, min: 0, step: 1},
+      reverse: {label: 'Reverse model axes', type: 'checkbox', value: primaryBranch.reverse},
+      corner_yx: {label: 'Transpose anchor corners', type: 'checkbox', value: primaryBranch.corner === 'yx'},
+      cem_size: {label: 'CEM area size', type: 'number', value: primaryBranch.size, min: 0.01, step: 0.1},
       hide_unmatched: {label: 'Hide unmatched vanilla faces', type: 'checkbox', value: settings.detection.hideUnmatched},
       pack_description: {label: 'Resource pack description', type: 'text', value: settings.resourcePack.description}
     });
@@ -420,7 +425,10 @@
         exportDialog.hide();
         try {
           const document = currentDocument();
-          const exported = exportModel(toCemModel(document.project.name, cubes, {reference: document.project.reference}), Number(result.model_id), document.project.cemVersion);
+          const entries = toCemModels(document.project.name, cubes, {reference: document.project.reference, branches: document.project.detection.branches});
+          const exported = entries.length === 1
+            ? exportModel(entries[0].model, Number(result.model_id), document.project.cemVersion, {modelScale: entries[0].branch.modelScale})
+            : exportModels(entries, Number(result.model_id), document.project.cemVersion);
           Blockbench.export({resource_id: 'cem_s_studio_glsl', type: `CEM-S ${document.project.cemVersion} model`, extensions: ['glsl'], name: document.project.name, content: exported.glsl}, path => Blockbench.showQuickMessage(`CEM-S Studio: exported ${path || document.project.name}.`));
         } catch (error) {
           Blockbench.showMessageBox({title: 'CEM-S Studio export failed', message: error.message});
@@ -461,8 +469,10 @@
     try {
       autoBindAttachments();
       const document = currentDocument();
-      const model = toCemModel(document.project.name, Cube.all || [], {reference: document.project.reference});
-      const exported = exportModel(model, document.project.modelId, document.project.cemVersion);
+      const entries = toCemModels(document.project.name, Cube.all || [], {reference: document.project.reference, branches: document.project.detection.branches});
+      const exported = entries.length === 1
+        ? exportModel(entries[0].model, document.project.modelId, document.project.cemVersion, {modelScale: entries[0].branch.modelScale})
+        : exportModels(entries, document.project.modelId, document.project.cemVersion);
       const selected = Blockbench.pickDirectory({title: mode === 'new' ? 'Choose where to create the resource pack' : 'Choose existing CEM-S resource pack folder', resource_id: 'cem_s_studio_pack'});
       if (!selected) return;
       const path = require('path');
@@ -557,7 +567,7 @@
     author: 'CEM-S Studio contributors',
     description: 'A Blockbench project format and resource-pack builder for CEM-S on Minecraft 1.21.6, 1.21.11, and 26.1+.',
     icon: 'extension',
-    version: '0.5.0',
+    version: '0.6.0',
     min_version: '4.12.0',
     variant: 'desktop',
     onload() {

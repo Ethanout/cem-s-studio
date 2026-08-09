@@ -7,12 +7,13 @@ const {RUNTIME_PROFILES, loadRuntimeFiles, sourcesFor} = require('../src/cem-run
 test('creates a versioned CEM-S Studio project with usable defaults', () => {
   const project = createProject({name: 'Pig Ears', modelId: 7, targetEntity: 'pig'});
   assert.equal(project.format, 'cemst');
-  assert.equal(project.formatVersion, 1);
+  assert.equal(project.formatVersion, 2);
   assert.equal(project.project.modelId, 7);
   assert.deepEqual(project.project.detection.pixel, [63, 0]);
   assert.equal(project.project.detection.preset, 'pig');
-  assert.deepEqual(project.project.detection.face, {mode: 'vertex_id', count: 42, index: 3});
-  assert.equal(project.project.detection.reverse, true);
+  assert.deepEqual(project.project.detection.branches[0].match, {mode: 'vertex_id', count: 42, index: 3});
+  assert.equal(project.project.detection.branches[0].reverse, true);
+  assert.equal(project.project.detection.branches[0].anchor, 'head');
 });
 
 test('serializes and parses a CEM-S Studio project without losing Blockbench data', () => {
@@ -26,6 +27,7 @@ test('selects pack formats for Minecraft 1.21.11 and 26.1+', () => {
   assert.equal(createProject({cemVersion: '26.1+'}).project.resourcePack.packFormat, 84);
   assert.equal(SUPPORTED_CEM_VERSIONS['1.21.6'], 63);
   assert.throws(() => createProject({cemVersion: 'unsupported'}), /unsupported Minecraft runtime/);
+  assert.throws(() => createProject({cemVersion: '1.21.11', targetEntity: 'armor_stand'}), /not verified/);
 });
 
 test('rejects unsupported project versions and invalid IDs', () => {
@@ -35,24 +37,60 @@ test('rejects unsupported project versions and invalid IDs', () => {
 
 test('migrates 0.2.0 cemst detection settings without losing project data', () => {
   const legacy = createProject({name: 'Legacy', modelId: 4});
+  legacy.formatVersion = 1;
   legacy.project.detection = {mode: 'texture_marker', pixel: [31, 0], color: [0, 0, 1, 255]};
   const migrated = parseProject(JSON.stringify(legacy));
   assert.equal(migrated.project.detection.preset, 'custom');
   assert.deepEqual(migrated.project.detection.pixel, [31, 0]);
-  assert.deepEqual(migrated.project.detection.face, {mode: 'vertex_id', count: 1, index: 0});
+  assert.equal(migrated.formatVersion, 2);
+  assert.deepEqual(migrated.project.detection.branches[0].match, {mode: 'vertex_id', count: 1, index: 0});
 });
 
 test('provides CEM-S detection presets for common entity models', () => {
   const arrow = detectionForPreset('arrow');
   assert.deepEqual(arrow.pixel, [31, 0]);
-  assert.deepEqual(arrow.face, {mode: 'vertex_id', count: 9, index: 0});
-  assert.equal(arrow.reverse, true);
-  assert.equal(arrow.corner, 'yx');
+  assert.deepEqual(arrow.branches[0].match, {mode: 'vertex_id', count: 9, index: 0});
+  assert.equal(arrow.branches[0].reverse, true);
+  assert.equal(arrow.branches[0].corner, 'yx');
   assert.equal(arrow.hideUnmatched, true);
   const elytra = detectionForPreset('elytra');
   assert.equal(elytra.channel, 'armor');
   assert.deepEqual(elytra.pixel, [1, 0]);
-  assert.deepEqual(elytra.face, {mode: 'vertex_id', count: 12, index: 5});
+  assert.deepEqual(elytra.branches[0].match, {mode: 'vertex_id', count: 12, index: 5});
+});
+
+test('round-trips multi-part detection branches with UV matching', () => {
+  const project = createProject({
+    name: 'Multipart',
+    modelId: 20,
+    detection: {
+      preset: 'custom',
+      pixel: [63, 0],
+      color: [0, 0, 240, 255],
+      branches: [
+        {id: 'head', anchor: 'head', modelIdOffset: 0, match: {mode: 'uv', cornerSet: 'corners', cornerOffset: 3, scale: [2, 7], offset: [2, 2]}, reverse: true, corner: 'default', size: 1},
+        {id: 'left_arm', anchor: 'left_arm', modelIdOffset: 1, match: {mode: 'uv', cornerSet: 'corners2', cornerOffset: 2, scale: [2, 12], offset: [34, 18]}, reverse: false, corner: 'default', size: 1}
+      ],
+      hideUnmatched: true
+    }
+  });
+  const parsed = parseProject(serializeProject(project));
+  assert.deepEqual(parsed.project.detection.branches, project.project.detection.branches);
+  const source = buildPackFiles(parsed, 'case 20: { }')['assets/minecraft/shaders/include/cem_user/detection/entity/multipart.glsl'];
+  assert.match(source, /cem = 20;/);
+  assert.match(source, /cem = 21;/);
+  assert.match(source, /uv - corners\[\(gl_VertexID \+ 3\) % 4\] \* vec2\(2, 7\) == vec2\(2, 2\)/);
+  assert.match(source, /else if \(uv - corners2\[\(gl_VertexID \+ 2\) % 4\] \* vec2\(2, 12\) == vec2\(34, 18\)\)/);
+  assert.match(source, /gl_Position = vec4\(0\)/);
+});
+
+test('rejects ambiguous detection branch identifiers and model IDs', () => {
+  const duplicate = createProject({name: 'Duplicate'});
+  duplicate.project.detection.branches.push({...duplicate.project.detection.branches[0]});
+  assert.throws(() => serializeProject(duplicate), /duplicate detection branch id/);
+  duplicate.project.detection.branches[1].id = 'second';
+  duplicate.project.detection.branches[1].anchor = 'second';
+  assert.throws(() => serializeProject(duplicate), /duplicate detection modelIdOffset/);
 });
 
 test('round-trips a custom reference rig and attachment bindings', () => {

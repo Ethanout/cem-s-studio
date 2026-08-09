@@ -4,7 +4,7 @@
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.CemSProject = api;
 }(typeof globalThis === 'undefined' ? this : globalThis, function (entityDatabase) {
-  const CURRENT_VERSION = 1;
+  const CURRENT_VERSION = 2;
   const SUPPORTED_CEM_VERSIONS = {'1.21.6': 63, '1.21.11': 75, '26.1+': 84};
   if (!entityDatabase) throw new Error('CEM-S entity database is required');
   const DETECTION_PRESETS = Object.fromEntries(Object.keys(entityDatabase.ENTITY_PROFILES).map(id => [id, entityDatabase.ENTITY_PROFILES[id].detection]));
@@ -17,21 +17,50 @@
     if (!Number.isInteger(value) || value < 0) throw new Error('modelId must be a non-negative integer');
   }
 
-  function detectionForPreset(name) {
-    return entityDatabase.detectionFor(name);
+  function detectionForPreset(name, version = '1.21.6') {
+    return entityDatabase.detectionFor(name, version);
   }
 
-  function normalizeDetection(input, fallbackPreset = 'pig') {
+  function normalizeDetectionBranch(input, fallback, index) {
+    const source = input || {};
+    const legacyFace = source.face || fallback.face || {mode: 'vertex_id', count: 1, index: 0};
+    const match = clone(source.match || legacyFace);
+    return {
+      id: source.id || (index === 0 ? 'main' : `part_${index + 1}`),
+      anchor: source.anchor === undefined ? null : source.anchor,
+      modelIdOffset: source.modelIdOffset === undefined ? index : source.modelIdOffset,
+      match,
+      reverse: source.reverse === undefined ? fallback.reverse : source.reverse,
+      corner: source.corner === undefined ? fallback.corner : source.corner,
+      size: source.size === undefined ? fallback.size : source.size,
+      modelScale: source.modelScale === undefined ? (fallback.modelScale || 8) : source.modelScale
+    };
+  }
+
+  function normalizeDetection(input, fallbackPreset = 'pig', version = '1.21.6') {
     const source = input || {};
     const presetName = source.preset || (source.face ? fallbackPreset : 'custom');
-    const detection = detectionForPreset(presetName);
+    const detection = detectionForPreset(presetName, version);
     if (source.pixel) detection.pixel = clone(source.pixel);
     if (source.color) detection.color = clone(source.color);
     if (source.channel !== undefined) detection.channel = source.channel;
-    if (source.face) detection.face = Object.assign({}, detection.face, clone(source.face));
-    if (source.reverse !== undefined) detection.reverse = source.reverse;
-    if (source.corner !== undefined) detection.corner = source.corner;
-    if (source.size !== undefined) detection.size = source.size;
+    const presetBranch = Array.isArray(detection.branches) ? detection.branches[0] : {};
+    const fallbackBranch = {
+      face: source.face || detection.face || presetBranch.match,
+      reverse: source.reverse === undefined ? (detection.reverse === undefined ? presetBranch.reverse : detection.reverse) : source.reverse,
+      corner: source.corner === undefined ? (detection.corner === undefined ? presetBranch.corner : detection.corner) : source.corner,
+      size: source.size === undefined ? (detection.size === undefined ? presetBranch.size : detection.size) : source.size,
+      modelScale: presetBranch.modelScale || 8
+    };
+    const usesLegacyBranch = source.face || source.reverse !== undefined || source.corner !== undefined || source.size !== undefined;
+    const branchSources = Array.isArray(source.branches) && source.branches.length
+      ? source.branches
+      : (!usesLegacyBranch && Array.isArray(detection.branches) && detection.branches.length ? detection.branches : [fallbackBranch]);
+    detection.branches = branchSources.map((branch, index) => normalizeDetectionBranch(branch, fallbackBranch, index));
+    delete detection.face;
+    delete detection.reverse;
+    delete detection.corner;
+    delete detection.size;
     if (source.hideUnmatched !== undefined) detection.hideUnmatched = source.hideUnmatched;
     detection.mode = 'texture_marker';
     return detection;
@@ -48,21 +77,52 @@
     if (!Array.isArray(detection.pixel) || detection.pixel.length !== 2 || detection.pixel.some((value) => !Number.isInteger(value) || value < 0)) throw new Error('detection.pixel must be a non-negative ivec2');
     if (!Array.isArray(detection.color) || detection.color.length !== 4 || detection.color.some((value) => !Number.isInteger(value) || value < 0 || value > 255)) throw new Error('detection.color must be an RGBA byte color');
     if (!Object.prototype.hasOwnProperty.call(DETECTION_PRESETS, detection.preset)) throw new Error(`unsupported detection preset: ${detection.preset}`);
+    entityDatabase.profileFor(detection.preset, document.project.cemVersion);
     if (!['entity', 'armor'].includes(detection.channel)) throw new Error('detection.channel must be entity or armor');
-    if (!detection.face || !['vertex_id', 'all'].includes(detection.face.mode)) throw new Error('detection.face.mode must be vertex_id or all');
-    if (!Number.isInteger(detection.face.count) || detection.face.count < 1) throw new Error('detection.face.count must be a positive integer');
-    if (!Number.isInteger(detection.face.index) || detection.face.index < 0 || detection.face.index >= detection.face.count) throw new Error('detection.face.index must be within the face count');
-    if (typeof detection.reverse !== 'boolean') throw new Error('detection.reverse must be boolean');
-    if (!['default', 'yx'].includes(detection.corner)) throw new Error('detection.corner must be default or yx');
-    if (!Number.isFinite(detection.size) || detection.size <= 0) throw new Error('detection.size must be positive');
+    if (!Array.isArray(detection.branches) || !detection.branches.length) throw new Error('detection.branches must contain at least one branch');
+    const branchIds = new Set();
+    const modelIdOffsets = new Set();
+    const branchAnchors = new Set();
+    detection.branches.forEach((branch, index) => {
+      const label = `detection.branches[${index}]`;
+      if (!branch || typeof branch.id !== 'string' || !/^[a-z0-9_]+$/.test(branch.id)) throw new Error(`${label}.id must be a lowercase identifier`);
+      if (branchIds.has(branch.id)) throw new Error(`duplicate detection branch id: ${branch.id}`);
+      branchIds.add(branch.id);
+      if (branch.anchor !== null && (typeof branch.anchor !== 'string' || !branch.anchor)) throw new Error(`${label}.anchor must be a string or null`);
+      if (branch.anchor !== null && branchAnchors.has(branch.anchor)) throw new Error(`duplicate detection branch anchor: ${branch.anchor}`);
+      if (branch.anchor !== null) branchAnchors.add(branch.anchor);
+      if (!Number.isInteger(branch.modelIdOffset) || branch.modelIdOffset < 0) throw new Error(`${label}.modelIdOffset must be a non-negative integer`);
+      if (modelIdOffsets.has(branch.modelIdOffset)) throw new Error(`duplicate detection modelIdOffset: ${branch.modelIdOffset}`);
+      modelIdOffsets.add(branch.modelIdOffset);
+      if (!branch.match || !['vertex_id', 'all', 'uv'].includes(branch.match.mode)) throw new Error(`${label}.match.mode must be vertex_id, all, or uv`);
+      if (branch.match.mode === 'all' && detection.branches.length > 1) throw new Error(`${label}.match.mode all cannot be combined with other branches`);
+      if (branch.match.mode === 'vertex_id') {
+        if (!Number.isInteger(branch.match.count) || branch.match.count < 1) throw new Error(`${label}.match.count must be a positive integer`);
+        if (!Number.isInteger(branch.match.index) || branch.match.index < 0 || branch.match.index >= branch.match.count) throw new Error(`${label}.match.index must be within the face count`);
+      }
+      if (branch.match.mode === 'uv') {
+        if (!['corners', 'corners2'].includes(branch.match.cornerSet)) throw new Error(`${label}.match.cornerSet must be corners or corners2`);
+        if (!Number.isInteger(branch.match.cornerOffset)) throw new Error(`${label}.match.cornerOffset must be an integer`);
+        for (const property of ['scale', 'offset']) {
+          if (!Array.isArray(branch.match[property]) || branch.match[property].length !== 2 || branch.match[property].some(value => !Number.isFinite(value))) throw new Error(`${label}.match.${property} must be a finite vec2`);
+        }
+      }
+      if (typeof branch.reverse !== 'boolean') throw new Error(`${label}.reverse must be boolean`);
+      if (!['default', 'yx'].includes(branch.corner)) throw new Error(`${label}.corner must be default or yx`);
+      if (!Number.isFinite(branch.size) || branch.size <= 0) throw new Error(`${label}.size must be positive`);
+      if (!Number.isFinite(branch.modelScale) || branch.modelScale <= 0) throw new Error(`${label}.modelScale must be positive`);
+    });
     if (typeof detection.hideUnmatched !== 'boolean') throw new Error('detection.hideUnmatched must be boolean');
     if (!['entity', 'armor'].includes(document.project.targetType)) throw new Error('project.targetType must be entity or armor');
     if (document.project.targetType !== detection.channel) throw new Error('project.targetType must match detection.channel');
     const reference = document.project.reference || {rig: 'none', root: null, anchors: {}, bindings: {}, guides: []};
-    if (!['none', 'player', 'pig', 'elytra', 'arrow', 'custom'].includes(reference.rig)) throw new Error('project.reference.rig must be none, player, pig, elytra, arrow, or custom');
+    if (!['none', 'player', 'pig', 'elytra', 'arrow', 'armor_stand', 'custom'].includes(reference.rig)) throw new Error('project.reference.rig is unsupported');
     if (reference.root !== null && typeof reference.root !== 'string') throw new Error('project.reference.root must be a string or null');
     if (!reference.anchors || typeof reference.anchors !== 'object' || Array.isArray(reference.anchors)) throw new Error('project.reference.anchors must be an object');
     if (reference.bindings !== undefined && (!reference.bindings || typeof reference.bindings !== 'object' || Array.isArray(reference.bindings))) throw new Error('project.reference.bindings must be an object');
+    for (const [element, anchor] of Object.entries(reference.bindings || {})) {
+      if (!element || typeof anchor !== 'string' || !Object.prototype.hasOwnProperty.call(reference.anchors, anchor)) throw new Error(`project.reference.bindings contains an unknown anchor: ${anchor}`);
+    }
     if (reference.guides !== undefined && (!Array.isArray(reference.guides) || reference.guides.some(value => typeof value !== 'string'))) throw new Error('project.reference.guides must be an array of UUIDs');
     document.project.reference = {rig: reference.rig, root: reference.root || null, anchors: clone(reference.anchors), bindings: clone(reference.bindings || {}), guides: clone(reference.guides || [])};
     return document;
@@ -72,11 +132,11 @@
     const name = options.name || 'CEM-S Model';
     const modelId = options.modelId === undefined ? 1 : options.modelId;
     const targetEntity = options.targetEntity || 'pig';
-    const inferredPreset = Object.prototype.hasOwnProperty.call(DETECTION_PRESETS, targetEntity) ? targetEntity : 'pig';
-    const detection = normalizeDetection(options.detection || {preset: inferredPreset}, inferredPreset);
-    const targetType = options.targetType || (detection.channel === 'armor' ? 'armor' : 'entity');
     const cemVersion = options.cemVersion || '1.21.6';
     if (!Object.prototype.hasOwnProperty.call(SUPPORTED_CEM_VERSIONS, cemVersion)) throw new Error(`unsupported Minecraft runtime: ${cemVersion}`);
+    const inferredPreset = Object.prototype.hasOwnProperty.call(DETECTION_PRESETS, targetEntity) ? targetEntity : 'pig';
+    const detection = normalizeDetection(options.detection || {preset: inferredPreset}, inferredPreset, cemVersion);
+    const targetType = options.targetType || (detection.channel === 'armor' ? 'armor' : 'entity');
     assertModelId(modelId);
     return {
       format: 'cemst',
@@ -106,8 +166,9 @@
 
   function parseProject(content) {
     const document = typeof content === 'string' ? JSON.parse(content) : clone(content);
+    if (document?.format === 'cemst' && document.formatVersion === 1) document.formatVersion = CURRENT_VERSION;
     if (document?.project && !document.project.cemVersion) document.project.cemVersion = '1.21.6';
-    if (document?.project?.detection) document.project.detection = normalizeDetection(document.project.detection, 'custom');
+    if (document?.project?.detection) document.project.detection = normalizeDetection(document.project.detection, 'custom', document.project.cemVersion || '1.21.6');
     return clone(validateProject(document));
   }
 

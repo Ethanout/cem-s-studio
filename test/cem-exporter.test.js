@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { exportModel } = require('../src/cem-exporter.js');
-const { toCemModel } = require('../src/blockbench-adapter.js');
+const { exportModel, exportModels } = require('../src/cem-exporter.js');
+const { toCemModel, toCemModels } = require('../src/blockbench-adapter.js');
 
 test('emits a CEM-S ADD_BOX call for a cube', () => {
   const result = exportModel({name: 'demo', parts: [{name: 'body', type: 'cube', origin: [0, 0, 0], size: [2, 3, 4]}]}, 7);
@@ -51,6 +51,44 @@ test('does not export registered reference guide cubes', () => {
     {name: 'jetpack', uuid: 'part-1', from: [0, 0, 0], to: [1, 1, 1]}
   ], {reference: {guides: ['guide-1']}});
   assert.deepEqual(model.parts.map(part => part.name), ['jetpack']);
+});
+
+test('converts bound cubes into reference-anchor local coordinates', () => {
+  const anchor = {name: 'head anchor', uuid: 'anchor-head', origin: [0, 24, 0], parent: null};
+  const attachment = {name: 'hat', uuid: 'attachment', origin: [0, 24, 0], parent: anchor};
+  const cube = {name: 'brim', uuid: 'brim', from: [-4, 24, -4], to: [4, 26, 4], origin: [0, 24, 0], parent: attachment};
+  const reference = {anchors: {head: 'anchor-head'}, bindings: {attachment: 'head'}, guides: []};
+  const model = toCemModel('hat', [cube], {reference});
+  assert.deepEqual(model.parts[0].origin, [0, 1, 0]);
+  assert.deepEqual(model.parts[0].pivot, [0, 0, 0]);
+});
+
+test('splits bound cubes into detection branch models', () => {
+  const headAnchor = {uuid: 'head-anchor', origin: [0, 24, 0], parent: null};
+  const bodyAnchor = {uuid: 'body-anchor', origin: [0, 18, 0], parent: null};
+  const headGroup = {uuid: 'hat', parent: headAnchor};
+  const bodyGroup = {uuid: 'pack', parent: bodyAnchor};
+  const cubes = [
+    {name: 'hat cube', from: [-1, 24, -1], to: [1, 26, 1], parent: headGroup},
+    {name: 'pack cube', from: [-2, 16, 1], to: [2, 20, 3], parent: bodyGroup}
+  ];
+  const branches = [
+    {id: 'head', anchor: 'head', modelIdOffset: 0, modelScale: 7},
+    {id: 'body', anchor: 'body', modelIdOffset: 1, modelScale: 12}
+  ];
+  const reference = {anchors: {head: 'head-anchor', body: 'body-anchor'}, bindings: {hat: 'head', pack: 'body'}, guides: []};
+  const entries = toCemModels('armor_stand', cubes, {reference, branches});
+  assert.deepEqual(entries.map(entry => entry.model.parts.map(part => part.name)), [['hat cube'], ['pack cube']]);
+  assert.deepEqual(entries[0].model.parts[0].origin, [0, 1, 0]);
+  assert.deepEqual(entries[1].model.parts[0].origin, [0, 0, 2]);
+  const exported = exportModels(entries, 20);
+  assert.match(exported.glsl, /case 20:[\s\S]*modelSize \/= 7\.0;/);
+  assert.match(exported.glsl, /case 21:[\s\S]*modelSize \/= 12\.0;/);
+});
+
+test('requires explicit bindings for multi-part exports', () => {
+  const branches = [{id: 'head', anchor: 'head'}, {id: 'body', anchor: 'body'}];
+  assert.throws(() => toCemModels('multipart', [{name: 'loose', from: [0, 0, 0], to: [1, 1, 1]}], {reference: {bindings: {}}, branches}), /not inside a detection anchor/);
 });
 
 test('supports cubes inside rotated Blockbench groups', () => {

@@ -14,3 +14,11 @@ test('lays out the player reference upright in Blockbench Y-up coordinates', () 
   assert.deepEqual(guides.head.uv, [0, 0]);
   assert.deepEqual(guides.body.uv, [16, 16]);
 });
+
+test('provides a six-part armor stand binding rig', () => {
+  const anchors = anchorsFor('armor_stand');
+  const guides = guidesFor('armor_stand');
+  assert.deepEqual(Object.keys(anchors), ['head', 'body', 'left_arm', 'right_arm', 'left_leg', 'right_leg']);
+  assert.equal(Object.keys(guides).length, 6);
+  assert.deepEqual(anchors.head.origin, [0, 24, 0]);
+});

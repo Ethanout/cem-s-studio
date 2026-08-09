@@ -62,11 +62,28 @@
 
   const ARROW_ANCHORS = {root: {origin: [0, 0, 0]}, shaft: {origin: [0, 8, 0]}};
   const ARROW_GUIDES = {shaft: {from: [-0.5, 0, -0.5], to: [0.5, 16, 0.5], origin: [0, 8, 0], uv: [0, 0]}};
+  const ARMOR_STAND_ANCHORS = {
+    head: {origin: [0, 24, 0]},
+    body: {origin: [0, 18, 0]},
+    left_arm: {origin: [3, 24, 0]},
+    right_arm: {origin: [-3, 24, 0]},
+    left_leg: {origin: [1, 18, 0]},
+    right_leg: {origin: [-1, 18, 0]}
+  };
+  const ARMOR_STAND_GUIDES = {
+    head: {from: [-2, 24, -2], to: [2, 28, 2], origin: [0, 24, 0], uv: [0, 0]},
+    body: {from: [-2, 18, -1], to: [2, 24, 1], origin: [0, 18, 0], uv: [16, 16]},
+    left_arm: {from: [2, 18, -1], to: [4, 24, 1], origin: [3, 24, 0], uv: [32, 48]},
+    right_arm: {from: [-4, 18, -1], to: [-2, 24, 1], origin: [-3, 24, 0], uv: [40, 16]},
+    left_leg: {from: [0, 12, -1], to: [2, 18, 1], origin: [1, 18, 0], uv: [16, 48]},
+    right_leg: {from: [-2, 12, -1], to: [0, 18, 1], origin: [-1, 18, 0], uv: [0, 16]}
+  };
   const RIGS = {
     player: {anchors: PLAYER_ANCHORS, guides: PLAYER_GUIDES},
     pig: {anchors: PIG_ANCHORS, guides: PIG_GUIDES},
     elytra: {anchors: ELYTRA_ANCHORS, guides: ELYTRA_GUIDES},
-    arrow: {anchors: ARROW_ANCHORS, guides: ARROW_GUIDES}
+    arrow: {anchors: ARROW_ANCHORS, guides: ARROW_GUIDES},
+    armor_stand: {anchors: ARMOR_STAND_ANCHORS, guides: ARMOR_STAND_GUIDES}
   };
 
   function clone(value) {
