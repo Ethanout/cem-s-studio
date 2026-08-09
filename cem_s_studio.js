@@ -1023,7 +1023,7 @@ SOFTWARE.
         </div>
       </div>`;
     studioPanel.node.querySelector('[data-cem-action="settings"]').addEventListener('click', () => showProjectSettings(false));
-    studioPanel.node.querySelector('[data-cem-action="reference"]').addEventListener('click', addPlayerReference);
+    studioPanel.node.querySelector('[data-cem-action="reference"]').addEventListener('click', addConfiguredReference);
     studioPanel.node.querySelector('[data-cem-action="export"]').addEventListener('click', exportCurrentProject);
     studioPanel.node.querySelector('[data-cem-action="build"]').addEventListener('click', () => buildResourcePack('new'));
     refreshStudioPanel();
@@ -1247,8 +1247,14 @@ SOFTWARE.
     Blockbench.showQuickMessage(`CEM-S Studio: ${rig} reference added. Drag model groups into its anchors.`);
   }
 
-  function addPlayerReference() {
-    addReferenceRig('player');
+  function addConfiguredReference() {
+    const settings = getSettings();
+    const profile = profileFor(settings.targetEntity, settings.cemVersion);
+    if (!profile.referenceRig || profile.referenceRig === 'none') {
+      Blockbench.showMessageBox({title: 'CEM-S Studio reference', message: 'This entity has no bundled reference rig. Import or register a vanilla reference model instead.'});
+      return;
+    }
+    addReferenceRig(profile.referenceRig);
   }
 
   function isInsideGroup(element, root) {
@@ -1543,7 +1549,7 @@ SOFTWARE.
     buildAction = new Action('build_cem_s_resource_pack', {name: 'Build CEM-S Resource Pack: Create New', icon: 'create_new_folder', category: 'file', condition: () => Format === projectFormat && !!Project, click: () => buildResourcePack('new')});
     updateBuildAction = new Action('update_cem_s_resource_pack', {name: 'Build CEM-S Resource Pack: Update Existing', icon: 'system_update_alt', category: 'file', condition: () => Format === projectFormat && !!Project, click: () => buildResourcePack('update')});
     exportAction = new Action('export_cem_s_studio', {name: 'Export CEM-S Model', icon: 'save', category: 'file.export', condition: () => Format === projectFormat && !!Project, click: exportCurrentProject});
-    addReferenceAction = new Action('cem_s_studio_add_player_reference', {name: 'Add Player Reference Model', icon: 'accessibility', category: 'tools', condition: () => Format === projectFormat && !!Project, click: addPlayerReference});
+    addReferenceAction = new Action('cem_s_studio_add_reference', {name: 'Add Entity Reference Model', icon: 'accessibility', category: 'tools', condition: () => Format === projectFormat && !!Project, click: addConfiguredReference});
     importReferenceAction = new Action('cem_s_studio_import_reference', {name: 'Import Vanilla Reference Model (.bbmodel)', icon: 'folder_open', category: 'tools', condition: () => Format === projectFormat && !!Project, click: importReferenceModel});
     registerReferenceAction = new Action('cem_s_studio_register_reference', {name: 'Register Selected Group as Reference Model', icon: 'bookmark', category: 'tools', condition: () => Format === projectFormat && !!Project, click: registerSelectedReference});
     bindReferenceAction = new Action('cem_s_studio_bind_reference', {name: 'Bind Selected Group to Reference Anchor', icon: 'link', category: 'tools', condition: () => Format === projectFormat && !!Project, click: showBindReferenceDialog});

@@ -147,7 +147,7 @@ async function main() {
         advancedSettingsDialog.hide();
 
         globalThis.__cemSmokeStage = 'player_reference';
-        BarItems.cem_s_studio_add_player_reference.click();
+        BarItems.cem_s_studio_add_reference.click();
         const referenceGuides = Cube.all.filter(cube => cube.name.startsWith('[CEM-S Reference]'));
         const referenceState = {
           guideCount: referenceGuides.length,
@@ -201,7 +201,7 @@ async function main() {
             advancedDetection: !!BarItems.cem_s_studio_advanced_detection,
             buildPack: !!BarItems.build_cem_s_resource_pack,
             updatePack: !!BarItems.update_cem_s_resource_pack,
-            addReference: !!BarItems.cem_s_studio_add_player_reference,
+            addReference: !!BarItems.cem_s_studio_add_reference,
             importReference: !!BarItems.cem_s_studio_import_reference,
             registerReference: !!BarItems.cem_s_studio_register_reference,
             bindReference: !!BarItems.cem_s_studio_bind_reference
