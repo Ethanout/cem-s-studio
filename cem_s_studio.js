@@ -560,7 +560,9 @@ SOFTWARE.
   let advancedSettingsAction;
   let settingsDialog;
   let buildAction;
+  let updateBuildAction;
   let buildDialog;
+  let studioMenu;
   let projectFormat;
   let projectCodec;
   let saveAction;
@@ -666,49 +668,33 @@ SOFTWARE.
     return (Group.all || []).find(group => group.uuid === reference || group.name === reference);
   }
 
+  function autoBindAttachments() {
+    const settings = getSettings();
+    const reference = settings.reference;
+    if (!reference?.root || !reference.anchors) return;
+    const root = findGroupByReference(reference.root);
+    if (!root) return;
+    const anchorByGroup = new Map(Object.entries(reference.anchors).map(([name, id]) => [id, name]));
+    const bindings = Object.assign({}, reference.bindings || {});
+    for (const group of Group.all || []) {
+      if (isReferenceGroup(group) || group === root) continue;
+      let parent = group.parent;
+      while (parent && parent !== root && !anchorByGroup.has(parent.uuid) && !anchorByGroup.has(parent.name)) parent = parent.parent;
+      if (parent && parent !== root) {
+        const anchor = anchorByGroup.get(parent.uuid) || anchorByGroup.get(parent.name);
+        if (anchor) bindings[group.uuid || group.name] = anchor;
+      }
+    }
+    if (JSON.stringify(bindings) !== JSON.stringify(reference.bindings || {})) {
+      Project.cem_studio = Object.assign({}, settings, {reference: Object.assign({}, reference, {bindings})});
+      Project.saved = false;
+    }
+  }
+
   function selectedGroup() {
     const group = Array.isArray(Group.selected) ? Group.selected[0] : Group.selected;
     if (group) return group;
     return (Outliner.selected || []).find(item => item && item.type === 'group') || null;
-  }
-
-  function createPlayerReferenceTexture() {
-    const existing = (Texture.all || []).find(texture => texture.name === 'CEM-S Player Reference');
-    if (existing) return existing;
-    const canvas = document.createElement('canvas');
-    canvas.width = canvas.height = 64;
-    const context = canvas.getContext('2d');
-    context.clearRect(0, 0, 64, 64);
-    const paintFace = (x, y, width, height) => {
-      context.fillStyle = '#fafafa';
-      context.fillRect(x, y, width, height);
-      context.strokeStyle = '#cfd3d7';
-      context.lineWidth = 1;
-      context.strokeRect(x + 0.5, y + 0.5, width - 1, height - 1);
-    };
-    const paintBox = (u, v, width, height, depth) => {
-      paintFace(u + depth, v, width, depth);
-      paintFace(u + depth + width, v, width, depth);
-      paintFace(u, v + depth, depth, height);
-      paintFace(u + depth, v + depth, width, height);
-      paintFace(u + depth + width, v + depth, depth, height);
-      paintFace(u + depth * 2 + width, v + depth, width, height);
-    };
-    paintBox(0, 0, 8, 8, 8);
-    paintBox(16, 16, 8, 12, 4);
-    paintBox(40, 16, 4, 12, 4);
-    paintBox(0, 16, 4, 12, 4);
-    paintBox(32, 48, 4, 12, 4);
-    paintBox(16, 48, 4, 12, 4);
-    context.fillStyle = '#bfc4c9';
-    context.fillRect(10, 10, 1, 1);
-    context.fillRect(14, 10, 1, 1);
-    context.fillRect(10, 12, 1, 1);
-    context.fillRect(11, 13, 3, 1);
-    context.fillRect(14, 12, 1, 1);
-    return new Texture({name: 'CEM-S Player Reference', mode: 'bitmap', uv_width: 64, uv_height: 64})
-      .fromDataURL(canvas.toDataURL('image/png'))
-      .add(false);
   }
 
   function withoutReferenceGuides(callback) {
@@ -758,7 +744,6 @@ SOFTWARE.
     }
     const anchors = anchorsFor('player');
     const guides = guidesFor('player');
-    const referenceTexture = createPlayerReferenceTexture();
     Undo.initEdit({outliner: true, elements: []});
     const root = new Group({name: `${REFERENCE_PREFIX} / Player`, origin: [0, 0, 0]}).init();
     const anchorNames = {};
@@ -778,7 +763,6 @@ SOFTWARE.
           export: false,
           locked: true
         }).addTo(group).init();
-        cube.applyTexture?.(referenceTexture, true);
         created.push(cube);
       }
     }
@@ -945,6 +929,7 @@ SOFTWARE.
   }
 
   function exportCurrentProject() {
+    autoBindAttachments();
     const cubes = (Cube.all || []).filter(cube => !isReferenceCube(cube, getSettings().reference));
     if (!cubes.length) {
       Blockbench.showQuickMessage('CEM-S Studio: add at least one cube before exporting.');
@@ -998,6 +983,7 @@ SOFTWARE.
 
   async function buildResourcePack(mode) {
     try {
+      autoBindAttachments();
       const document = currentDocument();
       const model = toCemModel(document.project.name, Cube.all || [], {reference: document.project.reference});
       const exported = exportModel(model, document.project.modelId, document.project.cemVersion);
@@ -1019,21 +1005,6 @@ SOFTWARE.
     } catch (error) {
       Blockbench.showMessageBox({title: 'CEM-S Studio resource-pack build failed', message: error.message});
     }
-  }
-
-  function showBuildDialog() {
-    buildDialog = new Dialog({
-      id: 'cem_s_studio_build',
-      title: 'Build CEM-S Resource Pack',
-      form: {
-        mode: {label: 'Output', type: 'select', options: {new: 'Create a new resource pack', update: 'Update an existing CEM-S pack'}, value: 'new'}
-      },
-      onConfirm(result) {
-        buildDialog.hide();
-        return buildResourcePack(result.mode);
-      }
-    });
-    buildDialog.show();
   }
 
   function installProjectFormat() {
@@ -1065,7 +1036,7 @@ SOFTWARE.
       show_in_new_list: true,
       box_uv: false,
       optional_box_uv: true,
-      single_texture: true,
+      single_texture: false,
       per_texture_uv_size: true,
       bone_rig: true,
       rotate_cubes: true,
@@ -1079,21 +1050,25 @@ SOFTWARE.
     saveAction = new Action('save_cemst_project', {name: 'Save CEM-S Studio Project', icon: 'save', category: 'file', condition: () => Format === projectFormat && !!Project, click: () => projectCodec.export()});
     settingsAction = new Action('cem_s_studio_project_settings', {name: 'CEM-S Studio Project Setup', icon: 'settings', category: 'tools', condition: () => Format === projectFormat && !!Project, click: () => showProjectSettings(false)});
     advancedSettingsAction = new Action('cem_s_studio_advanced_detection', {name: 'Advanced Detection Settings', icon: 'tune', category: 'tools', condition: () => Format === projectFormat && !!Project, click: () => showProjectSettings(true)});
-    buildAction = new Action('build_cem_s_resource_pack', {name: 'Build CEM-S Resource Pack', icon: 'folder_zip', category: 'file', condition: () => Format === projectFormat && !!Project, click: showBuildDialog});
+    buildAction = new Action('build_cem_s_resource_pack', {name: 'Build CEM-S Resource Pack: Create New', icon: 'create_new_folder', category: 'file', condition: () => Format === projectFormat && !!Project, click: () => buildResourcePack('new')});
+    updateBuildAction = new Action('update_cem_s_resource_pack', {name: 'Build CEM-S Resource Pack: Update Existing', icon: 'system_update_alt', category: 'file', condition: () => Format === projectFormat && !!Project, click: () => buildResourcePack('update')});
     exportAction = new Action('export_cem_s_studio', {name: 'Export CEM-S Model', icon: 'save', category: 'file.export', condition: () => Format === projectFormat && !!Project, click: exportCurrentProject});
     addReferenceAction = new Action('cem_s_studio_add_player_reference', {name: 'Add Player Reference Model', icon: 'accessibility', category: 'tools', condition: () => Format === projectFormat && !!Project, click: addPlayerReference});
     importReferenceAction = new Action('cem_s_studio_import_reference', {name: 'Import Vanilla Reference Model (.bbmodel)', icon: 'folder_open', category: 'tools', condition: () => Format === projectFormat && !!Project, click: importReferenceModel});
     registerReferenceAction = new Action('cem_s_studio_register_reference', {name: 'Register Selected Group as Reference Model', icon: 'bookmark', category: 'tools', condition: () => Format === projectFormat && !!Project, click: registerSelectedReference});
     bindReferenceAction = new Action('cem_s_studio_bind_reference', {name: 'Bind Selected Group to Reference Anchor', icon: 'link', category: 'tools', condition: () => Format === projectFormat && !!Project, click: showBindReferenceDialog});
-    MenuBar.addAction(saveAction, 'file');
-    MenuBar.addAction(settingsAction, 'tools');
-    MenuBar.addAction(advancedSettingsAction, 'tools');
-    MenuBar.addAction(buildAction, 'file.export');
-    MenuBar.addAction(exportAction, 'file.export');
-    MenuBar.addAction(addReferenceAction, 'tools');
-    MenuBar.addAction(importReferenceAction, 'tools');
-    MenuBar.addAction(registerReferenceAction, 'tools');
-    MenuBar.addAction(bindReferenceAction, 'tools');
+    studioMenu = new Menu('CEM-S Studio', [
+      settingsAction,
+      addReferenceAction,
+      importReferenceAction,
+      registerReferenceAction,
+      bindReferenceAction,
+      buildAction,
+      updateBuildAction,
+      advancedSettingsAction,
+      saveAction
+    ]);
+    MenuBar.addMenu(studioMenu, 'tools');
   }
 
   Plugin.register('cem_s_studio', {
@@ -1110,7 +1085,8 @@ SOFTWARE.
     },
     onunload() {
       uninstallTextureGeneratorGuard();
-      [saveAction, settingsAction, advancedSettingsAction, buildAction, exportAction, addReferenceAction, importReferenceAction, registerReferenceAction, bindReferenceAction].forEach(action => action && action.delete());
+      [saveAction, settingsAction, advancedSettingsAction, buildAction, updateBuildAction, exportAction, addReferenceAction, importReferenceAction, registerReferenceAction, bindReferenceAction].forEach(action => action && action.delete());
+      if (studioMenu) studioMenu.delete?.();
       [exportDialog, settingsDialog, buildDialog].forEach(dialog => dialog && dialog.delete());
       if (projectCodec) projectCodec.delete();
       if (projectFormat) projectFormat.delete();
