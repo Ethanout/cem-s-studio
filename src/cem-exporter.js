@@ -45,6 +45,9 @@
       if (part.faces && (!Array.isArray(part.faces) || part.faces.some((face) => face !== undefined && (!Array.isArray(face) || face.length !== 4 || face.some((item) => !Number.isFinite(item)))))) {
         throw new Error(`part ${index} faces must contain vec4 values`);
       }
+      if (part.faceRotations && (!Array.isArray(part.faceRotations) || part.faceRotations.length !== 6 || part.faceRotations.some((rotation) => !Number.isInteger(rotation) || ![0, 1, 3].includes(rotation)))) {
+        throw new Error(`part ${index} faceRotations must contain six values from 0, 1, or 3`);
+      }
     });
   }
 
@@ -64,12 +67,15 @@
   function emitPart(part) {
     if (part.type === 'square') return `    ADD_SQUARE(${part.points.map(formatVec3).join(', ')}, ${formatVec4(part.uv)})`;
     const faces = Array.from({length: 6}, (_, index) => part.faces && part.faces[index] ? formatVec4(part.faces[index]) : EMPTY_FACE).join(', ');
+    const rotations = part.faceRotations || Array(6).fill(0);
+    const rotationArgs = rotations.join(', ');
+    const uvRotate = rotations.some(Boolean);
     if (!part.rotationMatrix && (!part.rotation || part.rotation.every((angle) => angle === 0))) {
-      return `    ADD_BOX(${formatVec3(part.origin)}, ${formatVec3(part.size)}, ${faces})`;
+      return `    ${uvRotate ? 'ADD_BOX_UV_ROTATE' : 'ADD_BOX'}(${formatVec3(part.origin)}, ${formatVec3(part.size)}, ${faces}${uvRotate ? `, ${rotationArgs}` : ''})`;
     }
     const pivot = part.pivot || part.origin;
     const rotation = part.rotationMatrix ? formatMat3(part.rotationMatrix) : emitRotation(part.rotation);
-    return `    ADD_BOX_ROTATE(${formatVec3(part.origin)}, ${formatVec3(part.size)}, ${rotation}, ${formatVec3(pivot)}, ${faces})`;
+    return `    ${uvRotate ? 'ADD_BOX_ROTATE_UV' : 'ADD_BOX_ROTATE'}(${formatVec3(part.origin)}, ${formatVec3(part.size)}, ${rotation}, ${formatVec3(pivot)}, ${faces}${uvRotate ? `, ${rotationArgs}` : ''})`;
   }
 
   function emitModelCase(model, modelId, modelScale) {

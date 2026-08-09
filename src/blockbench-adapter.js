@@ -151,14 +151,17 @@ function toCemCubePart(cube, index, anchorOrigin = [0, 0, 0], atlas) {
   const from = vec3(cube.from, [0, 0, 0]);
   const to = vec3(cube.to, [0, 0, 0]);
   const faceOrder = ['down', 'up', 'north', 'east', 'south', 'west'];
+  const faceRotations = faceOrder.map((side) => {
+    const rotation = ((Number(cube.faces?.[side]?.rotation) || 0) % 360 + 360) % 360;
+    return rotation === 90 ? 1 : rotation === 270 ? 3 : 0;
+  });
   const faces = faceOrder.map((side) => {
     const face = cube.faces && cube.faces[side];
     if (face && face.enabled === false) return undefined;
     const uv = face && face.uv;
     if (!uv) return undefined;
     const rotation = ((Number(face.rotation) || 0) % 360 + 360) % 360;
-    if (rotation === 90 || rotation === 270) throw new Error(`cube "${cube.name || 'unnamed'}" face "${side}" uses ${rotation}-degree UV rotation, which CEM-S ADD_BOX cannot represent`);
-    if (rotation !== 0 && rotation !== 180) throw new Error(`cube "${cube.name || 'unnamed'}" face "${side}" has an invalid UV rotation`);
+    if (![0, 90, 180, 270].includes(rotation)) throw new Error(`cube "${cube.name || 'unnamed'}" face "${side}" has an invalid UV rotation`);
     const sourceUv = rotation === 180
       ? [uv[2], uv[3], uv[0] - uv[2], uv[1] - uv[3]]
       : [uv[0], uv[1], uv[2] - uv[0], uv[3] - uv[1]];
@@ -185,6 +188,7 @@ function toCemCubePart(cube, index, anchorOrigin = [0, 0, 0], atlas) {
   };
   if (baked) part.rotationMatrix = baked.rotationMatrix;
   if (faces.some(Boolean)) part.faces = faces;
+  if (faceRotations.some(Boolean)) part.faceRotations = faceRotations;
   return part;
 }
 

@@ -143,11 +143,15 @@ test('exports disabled faces and 180-degree UV rotation', () => {
   assert.match(glsl, /vec4\(4\.0, 6\.0, -4\.0, -6\.0\), vec4\(0\.0\)/);
 });
 
-test('rejects Cube UV rotations ADD_BOX cannot represent', () => {
+test('exports Cube 90 and 270 degree UV rotations with the runtime extension', () => {
   const cube = {from: [0, 0, 0], to: [1, 1, 1], faces: {down: {uv: [0, 0, 1, 1], rotation: 90}}};
-  assert.throws(() => toCemModel('pig', [cube]), /90-degree UV rotation/);
+  const model = toCemModel('pig', [cube]);
+  assert.deepEqual(model.parts[0].faceRotations, [1, 0, 0, 0, 0, 0]);
+  assert.match(exportModel(model).glsl, /ADD_BOX_UV_ROTATE/);
   cube.faces.down.rotation = 270;
-  assert.throws(() => toCemModel('pig', [cube]), /270-degree UV rotation/);
+  const rotated = toCemModel('pig', [cube]);
+  assert.deepEqual(rotated.parts[0].faceRotations, [3, 0, 0, 0, 0, 0]);
+  assert.match(exportModel(rotated).glsl, /ADD_BOX_UV_ROTATE/);
 });
 
 test('converts multi-axis cube rotation to a rotation matrix', () => {
