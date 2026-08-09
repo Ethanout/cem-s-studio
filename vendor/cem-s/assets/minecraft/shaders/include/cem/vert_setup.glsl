@@ -29,13 +29,15 @@ switch (gl_VertexID % 4)
         break;
     case 1:
         cem_pos2 = modelPos;
+        cem_uv2 = vec3(uv, 1);
         break;
     case 2:
         cem_pos3 = modelPos;
-        cem_uv2 = vec3(uv, 1);
+        cem_uv3 = vec3(uv, 1);
         break;
     case 3:
         cem_pos4 = modelPos;
+        cem_uv4 = vec3(uv, 1);
         break;
 }
 

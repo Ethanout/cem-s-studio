@@ -25,7 +25,7 @@ function readPngPixel(file, x, y) {
     if (type === 'IEND') break;
   }
   assert.equal(width, 64);
-  assert.equal(height, 32);
+  assert.equal(height, 69);
   const raw = zlib.inflateSync(Buffer.concat(imageData));
   const row = raw.subarray(y * (1 + width * 4) + 1, (y + 1) * (1 + width * 4));
   return [...row.subarray(x * 4, x * 4 + 4)];
@@ -38,13 +38,18 @@ test('builds a self-contained 1.21.11 Minecraft verification pack', () => {
     assert.equal(result.modelId, 901);
     assert.equal(JSON.parse(fs.readFileSync(path.join(output, 'pack.mcmeta'), 'utf8')).pack.pack_format, 75);
     assert.deepEqual(readPngPixel(path.join(output, 'assets/minecraft/textures/entity/pig/temperate_pig.png'), 63, 0), [255, 0, 0, 255]);
+    assert.deepEqual(readPngPixel(path.join(output, 'assets/minecraft/textures/entity/pig/temperate_pig.png'), 0, 65), [30, 120, 255, 255]);
     const detection = fs.readFileSync(path.join(output, 'assets/minecraft/shaders/include/cem_user/detection/entity/cem_s_studio_verification_pig.glsl'), 'utf8');
     assert.match(detection, /ivec2\(63, 0\)/);
+    assert.match(detection, /UV0 \* vec2\(64, 64\)/);
     assert.match(detection, /% 42 == 3/);
     assert.match(detection, /cem_keep_original = 1/);
     const model = fs.readFileSync(path.join(output, 'assets/minecraft/shaders/include/cem_user/models/entity/cem_s_studio_verification_pig.glsl'), 'utf8');
     assert.match(model, /case 901:/);
     assert.match(model, /ADD_BOX/);
+    assert.match(model, /vec3\(-2\.0, 0\.0, 3\.0\)/);
+    assert.match(model, /vec4\(0\.0, 65\.0, 4\.0, 4\.0\)/);
+    assert.match(model, /vec3\(1\.0, 1\.0, 1\.0\)/);
   } finally {
     fs.rmSync(output, {recursive: true, force: true});
   }

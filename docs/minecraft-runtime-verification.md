@@ -21,7 +21,7 @@ node scripts/build-minecraft-verification-pack.js 1.21.11 .\verification-output\
 - `pack.mcmeta` 和目标版本对应的 CEM-S runtime shader。
 - Pig 检测 shader，模型 ID 为 `901`。
 - `assets/minecraft/textures/entity/pig/temperate_pig.png`，像素 `(63, 0)` 为红色 marker `255,0,0,255`。
-- 一个应显示在猪头部的蓝色验证方块。
+- 一个使用独立图集区域、并与猪头保持间距的蓝白验证方块。
 - `cem-studio/verification.json` 和 `cem-studio/README.txt`。
 
 将生成的目录复制到 Minecraft 的 `resourcepacks` 目录后，启用资源包并召唤猪。记录以下结果：
@@ -36,7 +36,7 @@ node scripts/build-minecraft-verification-pack.js 1.21.11 .\verification-output\
 
 | Minecraft 版本 | 客户端 | 资源包加载 | Shader 编译 | 坐标/模型 | UV 90/270 | 证据 |
 | --- | --- | --- | --- | --- | --- | --- |
-| `1.21.11` | 待执行 | 待验证 | 待验证 | 待验证 | 待验证 | 待补截图和日志 |
+| `1.21.11` | Fabric 0.18.4 | 通过 | 通过（未发现 CEM-S shader 编译错误） | 通过：原版猪脸完整、方块位于头部外侧、前后关系正常 | 待验证 | `docs/evidence/1.21.11-pig-overlay.png`；`latest.log` 23:17:33/23:25:38/23:29:58 资源包重载记录 |
 | `1.21.6` | 待执行 | 待验证 | 待验证 | 待验证 | 待验证 | 待补截图和日志 |
 | `26.1+` | 待执行 | 待验证 | 待验证 | 待验证 | 待验证 | 待补截图和日志 |
 

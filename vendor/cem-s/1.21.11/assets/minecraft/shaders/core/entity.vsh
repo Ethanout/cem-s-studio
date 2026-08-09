@@ -30,7 +30,7 @@ out vec2 texCoord0;
 
 out vec4 cem_pos1, cem_pos2, cem_pos3, cem_pos4;
 out vec3 cem_glPos;
-out vec3 cem_uv1, cem_uv2;
+out vec3 cem_uv1, cem_uv2, cem_uv3, cem_uv4;
 out vec4 cem_lightMapColor;
 flat out int cem;
 flat out int cem_reverse;
@@ -50,7 +50,7 @@ void main() {
     vec2 uv = floor(UV0 * texSize);
 
     cem_pos1 = cem_pos2 = cem_pos3 = cem_pos4 = vec4(0);
-    cem_uv1 = cem_uv2 = vec3(0);
+    cem_uv1 = cem_uv2 = cem_uv3 = cem_uv4 = vec3(0);
     cem_glPos = vec3(0);
     cem_lightMapColor = vec4(1);
     cem_light = vec4(1);

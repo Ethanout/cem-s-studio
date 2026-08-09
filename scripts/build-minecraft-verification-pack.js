@@ -7,6 +7,7 @@ const {createProject, serializeProject} = require('../src/cemst.js');
 const {exportModel} = require('../src/cem-exporter.js');
 const {buildPackFiles} = require('../src/pack-builder.js');
 const {sourcesFor, profileFor, LICENSE} = require('../src/cem-runtime.js');
+const {profileFor: entityProfileFor} = require('../src/entity-database.js');
 
 const ROOT = path.resolve(__dirname, '..');
 
@@ -30,23 +31,25 @@ function chunk(type, data) {
 }
 
 function verificationTexture(width = 64, height = 32) {
+  const atlasHeight = height + 5;
   const rows = [];
-  for (let y = 0; y < height; y++) {
+  for (let y = 0; y < atlasHeight; y++) {
     const row = Buffer.alloc(1 + width * 4);
     for (let x = 0; x < width; x++) {
       const offset = 1 + x * 4;
-      row[offset] = 210;
-      row[offset + 1] = 150;
-      row[offset + 2] = 90;
-      row[offset + 3] = 255;
+      const isPadding = y === height;
+      const isAttachment = y > height && y <= height + 4 && x < 4;
+      row[offset] = isAttachment ? ((x + y) % 2 ? 30 : 230) : 210;
+      row[offset + 1] = isAttachment ? ((x + y) % 2 ? 120 : 245) : 150;
+      row[offset + 2] = isAttachment ? 255 : 90;
+      row[offset + 3] = isPadding || (y > height && !isAttachment) ? 0 : 255;
       if (x === 63 && y === 0) [row[offset], row[offset + 1], row[offset + 2], row[offset + 3]] = [255, 0, 0, 255];
-      if (x >= 24 && x < 40 && y >= 8 && y < 24) [row[offset], row[offset + 1], row[offset + 2]] = [80, 160, 220];
     }
     rows.push(row);
   }
   const header = Buffer.alloc(13);
   header.writeUInt32BE(width, 0);
-  header.writeUInt32BE(height, 4);
+  header.writeUInt32BE(atlasHeight, 4);
   header[8] = 8;
   header[9] = 6;
   header[10] = 0;
@@ -81,6 +84,8 @@ function writePack(files, output) {
 function buildVerificationPack(version = '1.21.11', requestedOutput = null) {
   const output = path.resolve(requestedOutput || path.join(os.tmpdir(), 'cem-s-studio-verification', version));
   const profile = profileFor(version);
+  const entityProfile = entityProfileFor('pig', version);
+  const attachmentUv = [0, entityProfile.textureSize[1] + 1, 4, 4];
   const project = createProject({
     name: 'CEM-S Studio Verification Pig',
     modelId: 901,
@@ -98,18 +103,18 @@ function buildVerificationPack(version = '1.21.11', requestedOutput = null) {
     parts: [{
       name: 'verification_marker',
       type: 'cube',
-      origin: [-2, 0, -2],
-      size: [4, 4, 4],
-      faces: [[24, 8, 40, 24], [24, 8, 40, 24], [24, 8, 40, 24], [24, 8, 40, 24], [24, 8, 40, 24], [24, 8, 40, 24]]
+      origin: [-2, 0, 3],
+      size: [1, 1, 1],
+      faces: [attachmentUv, attachmentUv, attachmentUv, attachmentUv, attachmentUv, attachmentUv]
     }]
   };
   const exported = exportModel(model, project.project.modelId, version, {modelScale: 8});
   const files = buildPackFiles(project, exported.glsl, {
     runtimeFiles: runtimeFiles(version),
-    textureFile: {path: project.project.texturePath, content: verificationTexture(), baseSize: [64, 32]}
+    textureFile: {path: project.project.texturePath, content: verificationTexture(...entityProfile.textureSize), baseSize: entityProfile.textureSize}
   });
   files['cem-studio/verification.json'] = `${JSON.stringify({version, entity: 'minecraft:pig', modelId: project.project.modelId, marker: {pixel: [63, 0], rgba: [255, 0, 0, 255]}, expected: ['resource pack loads without shader compile errors', 'red marker texture is detected', 'verification cube appears on the pig head', 'positive Y points upward in-game']}, null, 2)}\n`;
-  files['cem-studio/README.txt'] = `CEM-S Studio Verification\n\nMinecraft runtime: ${version}\nEntity: minecraft:pig\nModel ID: ${project.project.modelId}\n\nEnable this pack, summon a pig, and check the blue verification cube on its head.\nThe red marker at texture pixel (63, 0) is required for detection.\nRecord shader logs and screenshots in docs/minecraft-runtime-verification.md.\n`;
+  files['cem-studio/README.txt'] = `CEM-S Studio Verification\n\nMinecraft runtime: ${version}\nEntity: minecraft:pig\nModel ID: ${project.project.modelId}\n\nEnable this pack, summon a pig, and check the small blue-and-white verification cube beside its head.\nThe cube is intentionally separated from the original head surface so depth clipping can be tested without coplanar z-fighting.\nThe red marker at texture pixel (63, 0) is required for detection.\nRecord shader logs and screenshots in docs/minecraft-runtime-verification.md.\n`;
   writePack(files, output);
   fs.writeFileSync(path.join(output, 'cem-studio-project.cemst'), serializeProject(project));
   return {output, version, fileCount: Object.keys(files).length + 1, modelId: project.project.modelId};

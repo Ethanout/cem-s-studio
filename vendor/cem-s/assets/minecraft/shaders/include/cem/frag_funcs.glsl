@@ -5,7 +5,7 @@
 
 //Able ins and necessary uniforms
 in vec4 cem_pos1, cem_pos2, cem_pos3, cem_pos4;
-in vec3 cem_uv1, cem_uv2;
+in vec3 cem_uv1, cem_uv2, cem_uv3, cem_uv4;
 in vec3 cem_glPos;
 in vec4 cem_lightMapColor;
 flat in int cem;
@@ -83,7 +83,8 @@ vec3 triIntersect( in vec3 ro, in vec3 rd, in vec3 v0, in vec3 v1, in vec3 v2 )
     float u = d*dot( -q, v2v0 );
     float v = d*dot(  q, v1v0 );
     float t = d*dot( -n, rov0 );
-    if(u<0.0 || v<0.0 || t < 0 || u + v > 1.0) t = MAX_DEPTH;
+    const float edgeEpsilon = 0.0001;
+    if(u < -edgeEpsilon || v < -edgeEpsilon || t < 0 || u + v > 1.0 + edgeEpsilon) t = MAX_DEPTH;
     return vec3( u, v, t );
 }
 
