@@ -35,7 +35,7 @@ CEM-S Studio 是面向 Minecraft 1.21.6、1.21.11 和 26.1+ 的 CEM-S Blockbench
 
 ## 当前支持范围
 
-- Minecraft 1.21.6、1.21.11 和 26.1+。
+- 内置 Minecraft 1.21.6、1.21.11 和 26.1+ runtime；目前真实客户端证据为 Fabric 1.21.11，其他版本应视为待独立实机验证的候选支持。
 - Cube 与逐面 UV。
 - 单轴和多轴旋转。
 - 旋转父 Group 和多层 Group 变换。
@@ -46,7 +46,7 @@ CEM-S Studio 是面向 Minecraft 1.21.6、1.21.11 和 26.1+ 的 CEM-S Blockbench
 - 从 `.bbmodel` 导入任意原版/社区生物模型作为参考骨架。
 - `Entity / Mob` 与 `Armor / Equipment` 输出目标。
 
-暂不支持 Mesh、动画、禁用/旋转面和非统一 Group 缩放。遇到这些内容时，插件会停止导出并给出错误，而不会静默生成错误模型。
+- 暂不支持任意动画导出和无法表达为矩形的复杂 Mesh 面；Cube/父组旋转、方形 Mesh、定位器、禁用面和逐面 UV 旋转已支持。无法表达的几何会停止导出并给出错误，而不会静默生成错误模型。
 
 ## 开发验证
 

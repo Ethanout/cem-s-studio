@@ -22,7 +22,7 @@ The generated folder can be copied directly into Minecraft's `resourcepacks` dir
 - Single-axis cube rotation exports as `ADD_BOX_ROTATE`.
 - Parent-group and multi-axis rotations are baked into generated `mat3` transforms.
 - Blockbench face UV rectangles are preserved in CEM-S face order.
-- Minecraft 1.21.6, 1.21.11, and 26.1+ are supported. The 26.1+ profile currently uses shaders and pack format from Minecraft 26.1.2.
+- Bundled runtimes are provided for Minecraft 1.21.6, 1.21.11, and 26.1+ (the latter uses the 26.1.2 shader and pack-format profile). The current real-client verification evidence is for Fabric Minecraft 1.21.11; the other runtimes should be treated as release-candidate support until separately tested.
 - The versioned entity database currently includes Pig, Cold Pig, Sheep, Arrow, Elytra, Player, and Custom profiles. Pig, Cold Pig, Sheep, Arrow, and Elytra automatically choose the CEM-S anchor rule. Player and Custom expose the expert detection controls without inventing unverified marker values.
 - Presets include the CEM-S texture marker position and color. For Custom, put the configured marker pixel/color in the entity texture; the plugin generates the detection GLSL for you.
 - Add a Player Reference model or register any imported mob Group, then bind attachment Groups to named anchors. Reference guide cubes are excluded automatically from export.
@@ -31,7 +31,7 @@ The generated folder can be copied directly into Minecraft's `resourcepacks` dir
 - Multiple user textures are collected into a PNG atlas during resource-pack build. Cube and square UVs are remapped, reference-guide textures are excluded, and the generated detection shader compensates the original entity UV size when the atlas is larger than the vanilla texture.
 - Atlas export currently requires a referenced base texture with the selected profile's vanilla dimensions and a verified static `Sampler0` texture path. Player skins and custom dynamic texture sources remain an explicit runtime/resource-pack limitation.
 - Choose an Entity/Mob or Armor/Equipment render target for body attachments, armor, elytra, and similar equipment layers.
-- Non-uniform scale, meshes, disabled/rotated faces, locators, and animation export are rejected with diagnostics.
+- Arbitrary animated models and non-rectangular mesh faces are not exported. Cube rotation, parent transforms, square meshes, locators, disabled faces, and per-face UV rotation are supported; unsupported geometry is rejected with diagnostics.
 
 ## Development
 
