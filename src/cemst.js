@@ -77,6 +77,12 @@
     delete detection.corner;
     delete detection.size;
     if (source.hideUnmatched !== undefined) detection.hideUnmatched = source.hideUnmatched;
+    detection.originalMode = source.originalMode || detection.originalMode || (detection.hideUnmatched ? 'hide_unmatched' : 'keep');
+    if (!['keep', 'hide_unmatched'].includes(detection.originalMode)) {
+      if (source.originalMode !== undefined) throw new Error('detection.originalMode must be keep or hide_unmatched');
+      detection.originalMode = detection.hideUnmatched ? 'hide_unmatched' : 'keep';
+    }
+    detection.hideUnmatched = detection.originalMode === 'hide_unmatched';
     detection.mode = 'texture_marker';
     return detection;
   }
@@ -128,6 +134,8 @@
       if (!Number.isFinite(branch.modelScale) || branch.modelScale <= 0) throw new Error(`${label}.modelScale must be positive`);
     });
     if (typeof detection.hideUnmatched !== 'boolean') throw new Error('detection.hideUnmatched must be boolean');
+    if (!['keep', 'hide_unmatched'].includes(detection.originalMode)) throw new Error('detection.originalMode must be keep or hide_unmatched');
+    detection.hideUnmatched = detection.originalMode === 'hide_unmatched';
     if (!['entity', 'armor'].includes(document.project.targetType)) throw new Error('project.targetType must be entity or armor');
     if (document.project.targetType !== detection.channel) throw new Error('project.targetType must match detection.channel');
     if (document.project.referenceRig !== undefined && !['none', 'player', 'pig', 'elytra', 'arrow', 'armor_stand', 'custom'].includes(document.project.referenceRig)) throw new Error('project.referenceRig is unsupported');

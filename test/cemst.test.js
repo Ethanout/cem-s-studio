@@ -138,6 +138,16 @@ test('provides CEM-S detection presets for common entity models', () => {
   assert.deepEqual(elytra.branches[0].match, {mode: 'vertex_id', count: 12, index: 5});
 });
 
+test('stores original model visibility as a clear compatibility mode', () => {
+  const keep = createProject({detection: {preset: 'pig', originalMode: 'keep'}});
+  const hide = createProject({detection: {preset: 'pig', originalMode: 'hide_unmatched'}});
+  assert.equal(keep.project.detection.originalMode, 'keep');
+  assert.equal(keep.project.detection.hideUnmatched, false);
+  assert.equal(hide.project.detection.originalMode, 'hide_unmatched');
+  assert.equal(hide.project.detection.hideUnmatched, true);
+  assert.throws(() => createProject({detection: {preset: 'pig', originalMode: 'overlay'}}), /originalMode/);
+});
+
 test('round-trips multi-part detection branches with UV matching', () => {
   const project = createProject({
     name: 'Multipart',

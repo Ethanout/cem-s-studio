@@ -772,6 +772,12 @@ return {toCemModel, toCemModels, bindingForCube, isReferenceCube};
     delete detection.corner;
     delete detection.size;
     if (source.hideUnmatched !== undefined) detection.hideUnmatched = source.hideUnmatched;
+    detection.originalMode = source.originalMode || detection.originalMode || (detection.hideUnmatched ? 'hide_unmatched' : 'keep');
+    if (!['keep', 'hide_unmatched'].includes(detection.originalMode)) {
+      if (source.originalMode !== undefined) throw new Error('detection.originalMode must be keep or hide_unmatched');
+      detection.originalMode = detection.hideUnmatched ? 'hide_unmatched' : 'keep';
+    }
+    detection.hideUnmatched = detection.originalMode === 'hide_unmatched';
     detection.mode = 'texture_marker';
     return detection;
   }
@@ -823,6 +829,8 @@ return {toCemModel, toCemModels, bindingForCube, isReferenceCube};
       if (!Number.isFinite(branch.modelScale) || branch.modelScale <= 0) throw new Error(`${label}.modelScale must be positive`);
     });
     if (typeof detection.hideUnmatched !== 'boolean') throw new Error('detection.hideUnmatched must be boolean');
+    if (!['keep', 'hide_unmatched'].includes(detection.originalMode)) throw new Error('detection.originalMode must be keep or hide_unmatched');
+    detection.hideUnmatched = detection.originalMode === 'hide_unmatched';
     if (!['entity', 'armor'].includes(document.project.targetType)) throw new Error('project.targetType must be entity or armor');
     if (document.project.targetType !== detection.channel) throw new Error('project.targetType must match detection.channel');
     if (document.project.referenceRig !== undefined && !['none', 'player', 'pig', 'elytra', 'arrow', 'armor_stand', 'custom'].includes(document.project.referenceRig)) throw new Error('project.referenceRig is unsupported');
@@ -1744,6 +1752,8 @@ SOFTWARE.
       }],
       hideUnmatched: result.hide_unmatched === undefined ? currentDetection.hideUnmatched : !!result.hide_unmatched
     } : detectionForPreset(presetName, version);
+    detection.originalMode = result.original_model_mode || currentDetection.originalMode || (detection.hideUnmatched ? 'hide_unmatched' : 'keep');
+    detection.hideUnmatched = detection.originalMode === 'hide_unmatched';
     const next = createProject({
       ...current,
       name: value('project_name', current.name),
@@ -1787,7 +1797,7 @@ SOFTWARE.
       reverse: {label: 'Reverse model axes', type: 'checkbox', value: primaryBranch.reverse},
       corner_yx: {label: 'Transpose anchor corners', type: 'checkbox', value: primaryBranch.corner === 'yx'},
       cem_size: {label: 'CEM area size', type: 'number', value: primaryBranch.size, min: 0.01, step: 0.1},
-      hide_unmatched: {label: 'Hide unmatched vanilla faces', type: 'checkbox', value: settings.detection.hideUnmatched},
+      original_model_mode: {label: 'Original model visibility', description: 'Keep unmatched vanilla parts, or hide them when using the CEM-S model as a full replacement.', type: 'select', options: {keep: 'Keep unmatched vanilla parts', hide_unmatched: 'Hide unmatched vanilla parts'}, value: settings.detection.originalMode || (settings.detection.hideUnmatched ? 'hide_unmatched' : 'keep')},
       texture_path: {label: 'Target texture path', description: 'For dynamic or expert entities, e.g. assets/minecraft/textures/entity/custom.png.', type: 'text', value: settings.texturePath || ''},
       texture_paths: {label: 'Additional variant texture paths', description: 'Optional resource-pack PNG paths, one per line. Studio writes the same generated atlas to every listed variant.', type: 'textarea', value: (settings.texturePaths || []).slice(1).join('\n')},
       pack_description: {label: 'Resource pack description', type: 'text', value: settings.resourcePack.description}

@@ -413,6 +413,8 @@
       }],
       hideUnmatched: result.hide_unmatched === undefined ? currentDetection.hideUnmatched : !!result.hide_unmatched
     } : detectionForPreset(presetName, version);
+    detection.originalMode = result.original_model_mode || currentDetection.originalMode || (detection.hideUnmatched ? 'hide_unmatched' : 'keep');
+    detection.hideUnmatched = detection.originalMode === 'hide_unmatched';
     const next = createProject({
       ...current,
       name: value('project_name', current.name),
@@ -456,7 +458,7 @@
       reverse: {label: 'Reverse model axes', type: 'checkbox', value: primaryBranch.reverse},
       corner_yx: {label: 'Transpose anchor corners', type: 'checkbox', value: primaryBranch.corner === 'yx'},
       cem_size: {label: 'CEM area size', type: 'number', value: primaryBranch.size, min: 0.01, step: 0.1},
-      hide_unmatched: {label: 'Hide unmatched vanilla faces', type: 'checkbox', value: settings.detection.hideUnmatched},
+      original_model_mode: {label: 'Original model visibility', description: 'Keep unmatched vanilla parts, or hide them when using the CEM-S model as a full replacement.', type: 'select', options: {keep: 'Keep unmatched vanilla parts', hide_unmatched: 'Hide unmatched vanilla parts'}, value: settings.detection.originalMode || (settings.detection.hideUnmatched ? 'hide_unmatched' : 'keep')},
       texture_path: {label: 'Target texture path', description: 'For dynamic or expert entities, e.g. assets/minecraft/textures/entity/custom.png.', type: 'text', value: settings.texturePath || ''},
       texture_paths: {label: 'Additional variant texture paths', description: 'Optional resource-pack PNG paths, one per line. Studio writes the same generated atlas to every listed variant.', type: 'textarea', value: (settings.texturePaths || []).slice(1).join('\n')},
       pack_description: {label: 'Resource pack description', type: 'text', value: settings.resourcePack.description}
