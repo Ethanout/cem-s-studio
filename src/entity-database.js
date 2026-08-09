@@ -17,7 +17,7 @@
   const CUSTOM_DETECTION = singleDetection('entity', [63, 0], [0, 0, 1, 255], {mode: 'vertex_id', count: 1, index: 0}, {corner: 'yx'});
   const PROFILES = {
     armor_stand: {
-      name: 'Armor Stand', category: 'humanoid', keywords: ['armor stand', '盔甲架'], targetType: 'entity', referenceRig: 'armor_stand', textureSize: [64, 64], versions: ['1.21.6'],
+      name: 'Armor Stand', category: 'humanoid', keywords: ['armor stand', '盔甲架'], targetType: 'entity', referenceRig: 'armor_stand', textureSize: [64, 64], texturePath: 'assets/minecraft/textures/entity/armorstand/wood.png', versions: ['1.21.6'],
       detection: {
         channel: 'entity', pixel: [63, 0], color: [0, 0, 240, 255], hideUnmatched: true,
         branches: [
@@ -31,23 +31,23 @@
       }
     },
     pig: {
-      name: 'Pig', category: 'quadruped', keywords: ['pig', '猪'], targetType: 'entity', referenceRig: 'pig', textureSize: [64, 32],
+      name: 'Pig', category: 'quadruped', keywords: ['pig', '猪'], targetType: 'entity', referenceRig: 'pig', textureSize: [64, 32], texturePath: 'assets/minecraft/textures/entity/pig/temperate_pig.png',
       detection: singleDetection('entity', [63, 0], [255, 0, 0, 255], {mode: 'vertex_id', count: 42, index: 3}, {anchor: 'head', reverse: true})
     },
     cold_pig: {
-      name: 'Cold Pig', category: 'quadruped', keywords: ['cold pig', '寒冷猪'], targetType: 'entity', referenceRig: 'pig', textureSize: [64, 64],
+      name: 'Cold Pig', category: 'quadruped', keywords: ['cold pig', '寒冷猪'], targetType: 'entity', referenceRig: 'pig', textureSize: [64, 64], texturePath: 'assets/minecraft/textures/entity/pig/cold_pig.png',
       detection: singleDetection('entity', [63, 0], [3, 0, 0, 255], {mode: 'vertex_id', count: 84, index: 3}, {anchor: 'head', reverse: true})
     },
     sheep: {
-      name: 'Sheep', category: 'quadruped', keywords: ['sheep', '羊'], targetType: 'entity', referenceRig: 'pig', textureSize: [64, 32],
+      name: 'Sheep', category: 'quadruped', keywords: ['sheep', '羊'], targetType: 'entity', referenceRig: 'pig', textureSize: [64, 32], texturePath: 'assets/minecraft/textures/entity/sheep/sheep.png',
       detection: singleDetection('entity', [63, 0], [2, 0, 0, 255], {mode: 'all'}, {anchor: 'body', size: 1.2})
     },
     arrow: {
-      name: 'Arrow', category: 'projectile', keywords: ['arrow', '箭'], targetType: 'entity', referenceRig: 'arrow', textureSize: [32, 32],
+      name: 'Arrow', category: 'projectile', keywords: ['arrow', '箭'], targetType: 'entity', referenceRig: 'arrow', textureSize: [32, 32], texturePath: 'assets/minecraft/textures/entity/projectiles/arrow.png',
       detection: singleDetection('entity', [31, 0], [0, 0, 1, 255], {mode: 'vertex_id', count: 9, index: 0}, {anchor: 'shaft', reverse: true, corner: 'yx', size: 1.5, hideUnmatched: true})
     },
     elytra: {
-      name: 'Elytra / Wings', category: 'equipment', keywords: ['elytra', 'wings', '鞘翅'], targetType: 'armor', referenceRig: 'elytra', textureSize: [64, 32],
+      name: 'Elytra / Wings', category: 'equipment', keywords: ['elytra', 'wings', '鞘翅'], targetType: 'armor', referenceRig: 'elytra', textureSize: [64, 32], texturePath: 'assets/minecraft/textures/entity/equipment/wings/elytra.png',
       detection: singleDetection('armor', [1, 0], [0, 0, 4, 255], {mode: 'vertex_id', count: 12, index: 5}, {anchor: 'body', reverse: true, size: 2, hideUnmatched: true})
     },
     player: {

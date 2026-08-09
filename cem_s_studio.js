@@ -3,6 +3,140 @@
 (function (root, factory) {
   const api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
+  root.CemSTextureAtlas = api;
+}(typeof globalThis === 'undefined' ? this : globalThis, function () {
+  function finitePositive(value, label) {
+    if (!Number.isInteger(value) || value <= 0) throw new Error(`${label} must be a positive integer`);
+    return value;
+  }
+
+  function finiteNonNegative(value, label) {
+    if (!Number.isInteger(value) || value < 0) throw new Error(`${label} must be a non-negative integer`);
+    return value;
+  }
+
+  function textureKey(texture) {
+    if (texture === undefined || texture === null || texture === false) return null;
+    if (typeof texture === 'string' || typeof texture === 'number') return String(texture);
+    return texture.uuid || texture.id || texture.name || null;
+  }
+
+  function layoutTextures(textures, padding = 1, primaryTexture = null) {
+    if (!Array.isArray(textures)) throw new Error('textures must be an array');
+    finiteNonNegative(padding, 'padding');
+    const seen = new Set();
+    let entries = textures.map((texture, index) => {
+      const key = textureKey(texture);
+      if (!key) throw new Error(`texture ${index + 1} is missing an id`);
+      if (seen.has(key)) throw new Error(`duplicate texture id: ${key}`);
+      seen.add(key);
+      return {key, width: finitePositive(texture.width, `texture ${key} width`), height: finitePositive(texture.height, `texture ${key} height`)};
+    }).sort((left, right) => right.height - left.height || right.width - left.width || left.key.localeCompare(right.key));
+    if (!entries.length) return {width: 1, height: 1, padding, placements: {}};
+    const primaryKey = textureKey(primaryTexture);
+    if (primaryKey) {
+      const primaryIndex = entries.findIndex(entry => entry.key === primaryKey);
+      if (primaryIndex < 0) throw new Error(`primary texture is missing from the atlas: ${primaryKey}`);
+      entries = [entries[primaryIndex], ...entries.slice(0, primaryIndex), ...entries.slice(primaryIndex + 1)];
+    }
+    const anchored = Boolean(primaryKey);
+    const width = Math.max(...entries.map(entry => entry.width + (anchored ? 0 : padding * 2)));
+    let y = anchored ? 0 : padding;
+    const placements = {};
+    for (const entry of entries) {
+      placements[entry.key] = {x: anchored ? 0 : padding, y, width: entry.width, height: entry.height};
+      y += entry.height + padding;
+    }
+    return {width, height: anchored ? y - padding : y, padding, placements, primaryKey: primaryKey || null};
+  }
+
+  function remapUvRect(uv, placement) {
+    if (!Array.isArray(uv) || uv.length !== 4 || uv.some(value => !Number.isFinite(value))) throw new Error('uv must be a finite vec4');
+    if (!placement || !Number.isFinite(placement.x) || !Number.isFinite(placement.y)) throw new Error('texture placement is missing');
+    return [placement.x + uv[0], placement.y + uv[1], uv[2], uv[3]];
+  }
+
+  function placementFor(atlas, texture) {
+    const key = textureKey(texture);
+    return key && atlas?.placements?.[key] ? atlas.placements[key] : null;
+  }
+
+  function collectReferencedTextures(elements, textures, options = {}) {
+    if (!Array.isArray(elements)) throw new Error('elements must be an array');
+    if (!Array.isArray(textures)) throw new Error('textures must be an array');
+    const byKey = new Map();
+    for (const texture of textures) {
+      for (const key of [textureKey(texture), texture?.uuid, texture?.id, texture?.name].filter(value => value !== undefined && value !== null && value !== '')) {
+        byKey.set(String(key), texture);
+      }
+    }
+    const result = [];
+    const seen = new Set();
+    for (const element of elements) {
+      if (options.isReference?.(element)) continue;
+      for (const [faceName, face] of Object.entries(element?.faces || {})) {
+        if (!face || face.enabled === false || face.texture === undefined || face.texture === null || face.texture === false) continue;
+        const requestedKey = textureKey(face.texture);
+        const texture = requestedKey && byKey.get(requestedKey);
+        if (!texture) throw new Error(`element "${element.name || 'unnamed'}" face "${faceName}" references a missing texture`);
+        const key = textureKey(texture);
+        if (!seen.has(key)) {
+          seen.add(key);
+          result.push(texture);
+        }
+      }
+    }
+    return result;
+  }
+
+  function dataUrlToBytes(dataUrl) {
+    if (typeof dataUrl !== 'string' || !/^data:image\/png;base64,/.test(dataUrl)) throw new Error('atlas canvas did not produce PNG data');
+    const encoded = dataUrl.slice(dataUrl.indexOf(',') + 1);
+    if (typeof Buffer !== 'undefined') return new Uint8Array(Buffer.from(encoded, 'base64'));
+    if (typeof atob !== 'function') throw new Error('this Blockbench environment cannot decode PNG data');
+    const binary = atob(encoded);
+    return Uint8Array.from(binary, character => character.charCodeAt(0));
+  }
+
+  function renderTextureAtlas(textures, options = {}) {
+    if (!Array.isArray(textures) || !textures.length) throw new Error('at least one referenced texture is required');
+    const documentApi = options.document || globalThis.document;
+    if (!documentApi?.createElement) throw new Error('texture atlas rendering requires Blockbench canvas support');
+    const primaryTexture = options.primaryTexture || textures[0];
+    const layout = layoutTextures(textures, options.padding === undefined ? 1 : options.padding, primaryTexture);
+    const canvas = documentApi.createElement('canvas');
+    canvas.width = layout.width;
+    canvas.height = layout.height;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('could not create the texture atlas canvas');
+    context.imageSmoothingEnabled = false;
+    for (const texture of textures) {
+      const placement = placementFor(layout, texture);
+      const image = texture.canvas || texture.img || texture.image;
+      if (!image || !Number.isFinite(image.width) || !Number.isFinite(image.height) || image.width <= 0 || image.height <= 0) {
+        throw new Error(`texture "${texture.name || textureKey(texture)}" is not loaded and cannot be added to the atlas`);
+      }
+      context.drawImage(image, placement.x, placement.y, placement.width, placement.height);
+    }
+    if (options.marker) {
+      const {pixel, color} = options.marker;
+      if (!Array.isArray(pixel) || pixel.length !== 2 || pixel.some(value => !Number.isInteger(value) || value < 0)) throw new Error('texture marker pixel must be a non-negative ivec2');
+      if (!Array.isArray(color) || color.length !== 4 || color.some(value => !Number.isInteger(value) || value < 0 || value > 255)) throw new Error('texture marker color must be RGBA bytes');
+      if (pixel[0] >= canvas.width || pixel[1] >= canvas.height) throw new Error(`texture atlas ${canvas.width}x${canvas.height} is too small for marker pixel ${pixel.join(', ')}`);
+      context.fillStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${color[3] / 255})`;
+      context.fillRect(pixel[0], pixel[1], 1, 1);
+    }
+    const dataUrl = canvas.toDataURL('image/png');
+    return {...layout, dataUrl, png: dataUrlToBytes(dataUrl)};
+  }
+
+  return {textureKey, layoutTextures, remapUvRect, placementFor, collectReferencedTextures, dataUrlToBytes, renderTextureAtlas};
+}));
+
+
+(function (root, factory) {
+  const api = factory();
+  if (typeof module === 'object' && module.exports) module.exports = api;
   root.CemSExporter = api;
 }(typeof globalThis === 'undefined' ? this : globalThis, function () {
   const AXES = ['X', 'Y', 'Z'];
@@ -120,10 +254,11 @@
 
 
 (function (root, factory) {
-  const api = factory();
+  const atlas = typeof module === 'object' && module.exports ? require('./texture-atlas.js') : root.CemSTextureAtlas;
+  const api = factory(atlas);
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.CemSBlockbenchAdapter = api;
-}(typeof globalThis === 'undefined' ? this : globalThis, function () {
+}(typeof globalThis === 'undefined' ? this : globalThis, function (textureAtlas) {
 function vec3(value, fallback) {
   return Array.isArray(value) && value.length === 3 ? value.slice() : fallback.slice();
 }
@@ -231,7 +366,7 @@ function sameVec3(a, b) {
   return a.every((value, index) => nearlyEqual(value, b[index]));
 }
 
-function toCemSquareParts(mesh, index, anchorOrigin = [0, 0, 0]) {
+function toCemSquareParts(mesh, index, anchorOrigin = [0, 0, 0], atlas) {
   const vertices = mesh.vertices || {};
   const faces = mesh.faces || {};
   const parts = [];
@@ -254,18 +389,20 @@ function toCemSquareParts(mesh, index, anchorOrigin = [0, 0, 0]) {
     const localPoints = corners.slice(0, 3).map(item => points[item.id]);
     const expectedFourth = localPoints[1].map((value, axis) => value + localPoints[2][axis] - localPoints[0][axis]);
     if (!sameVec3(points[corners[3].id], expectedFourth)) throw new Error(`mesh "${mesh.name || 'unnamed'}" face "${faceKey}" must be a parallelogram for ADD_SQUARE`);
+    const placement = textureAtlas?.placementFor(atlas, face.texture);
+    if (atlas && face.texture && !placement) throw new Error(`mesh "${mesh.name || 'unnamed'}" face "${faceKey}" references a texture missing from the atlas`);
     parts.push({
       name: `${mesh.name || `mesh_${index + 1}`}/${faceKey}`,
       type: 'square',
       points: localPoints.map(point => transformPoint(mesh, point, anchorOrigin)),
-      uv: [minU, minV, maxU - minU, maxV - minV]
+      uv: placement ? textureAtlas.remapUvRect([minU, minV, maxU - minU, maxV - minV], placement) : [minU, minV, maxU - minU, maxV - minV]
     });
   }
   if (!parts.length) throw new Error(`mesh "${mesh.name || 'unnamed'}" has no exportable faces`);
   return parts;
 }
 
-function toCemCubePart(cube, index, anchorOrigin = [0, 0, 0]) {
+function toCemCubePart(cube, index, anchorOrigin = [0, 0, 0], atlas) {
   const from = vec3(cube.from, [0, 0, 0]);
   const to = vec3(cube.to, [0, 0, 0]);
   const faceOrder = ['down', 'up', 'north', 'east', 'south', 'west'];
@@ -277,9 +414,12 @@ function toCemCubePart(cube, index, anchorOrigin = [0, 0, 0]) {
     const rotation = ((Number(face.rotation) || 0) % 360 + 360) % 360;
     if (rotation === 90 || rotation === 270) throw new Error(`cube "${cube.name || 'unnamed'}" face "${side}" uses ${rotation}-degree UV rotation, which CEM-S ADD_BOX cannot represent`);
     if (rotation !== 0 && rotation !== 180) throw new Error(`cube "${cube.name || 'unnamed'}" face "${side}" has an invalid UV rotation`);
-    return rotation === 180
+    const sourceUv = rotation === 180
       ? [uv[2], uv[3], uv[0] - uv[2], uv[1] - uv[3]]
       : [uv[0], uv[1], uv[2] - uv[0], uv[3] - uv[1]];
+    const placement = textureAtlas?.placementFor(atlas, face.texture);
+    if (atlas && face.texture && !placement) throw new Error(`cube "${cube.name || 'unnamed'}" face "${side}" references a texture missing from the atlas`);
+    return placement ? textureAtlas.remapUvRect(sourceUv, placement) : sourceUv;
   });
   const rotation = vec3(cube.rotation, [0, 0, 0]);
   const hasParent = Boolean(cube.parent);
@@ -338,8 +478,8 @@ function toCemModel(name, cubes, options = {}) {
   const parts = exportable.flatMap((element, index) => {
     const anchorOrigin = anchorOriginForCube(element, options.reference);
     return element.vertices && element.faces
-      ? toCemSquareParts(element, index, anchorOrigin)
-      : [toCemCubePart(element, index, anchorOrigin)];
+      ? toCemSquareParts(element, index, anchorOrigin, options.textureAtlas)
+      : [toCemCubePart(element, index, anchorOrigin, options.textureAtlas)];
   });
   return {name: name || 'cem_model', parts};
 }
@@ -384,7 +524,7 @@ return {toCemModel, toCemModels, bindingForCube, isReferenceCube};
   const CUSTOM_DETECTION = singleDetection('entity', [63, 0], [0, 0, 1, 255], {mode: 'vertex_id', count: 1, index: 0}, {corner: 'yx'});
   const PROFILES = {
     armor_stand: {
-      name: 'Armor Stand', category: 'humanoid', keywords: ['armor stand', '盔甲架'], targetType: 'entity', referenceRig: 'armor_stand', textureSize: [64, 64], versions: ['1.21.6'],
+      name: 'Armor Stand', category: 'humanoid', keywords: ['armor stand', '盔甲架'], targetType: 'entity', referenceRig: 'armor_stand', textureSize: [64, 64], texturePath: 'assets/minecraft/textures/entity/armorstand/wood.png', versions: ['1.21.6'],
       detection: {
         channel: 'entity', pixel: [63, 0], color: [0, 0, 240, 255], hideUnmatched: true,
         branches: [
@@ -398,23 +538,23 @@ return {toCemModel, toCemModels, bindingForCube, isReferenceCube};
       }
     },
     pig: {
-      name: 'Pig', category: 'quadruped', keywords: ['pig', '猪'], targetType: 'entity', referenceRig: 'pig', textureSize: [64, 32],
+      name: 'Pig', category: 'quadruped', keywords: ['pig', '猪'], targetType: 'entity', referenceRig: 'pig', textureSize: [64, 32], texturePath: 'assets/minecraft/textures/entity/pig/temperate_pig.png',
       detection: singleDetection('entity', [63, 0], [255, 0, 0, 255], {mode: 'vertex_id', count: 42, index: 3}, {anchor: 'head', reverse: true})
     },
     cold_pig: {
-      name: 'Cold Pig', category: 'quadruped', keywords: ['cold pig', '寒冷猪'], targetType: 'entity', referenceRig: 'pig', textureSize: [64, 64],
+      name: 'Cold Pig', category: 'quadruped', keywords: ['cold pig', '寒冷猪'], targetType: 'entity', referenceRig: 'pig', textureSize: [64, 64], texturePath: 'assets/minecraft/textures/entity/pig/cold_pig.png',
       detection: singleDetection('entity', [63, 0], [3, 0, 0, 255], {mode: 'vertex_id', count: 84, index: 3}, {anchor: 'head', reverse: true})
     },
     sheep: {
-      name: 'Sheep', category: 'quadruped', keywords: ['sheep', '羊'], targetType: 'entity', referenceRig: 'pig', textureSize: [64, 32],
+      name: 'Sheep', category: 'quadruped', keywords: ['sheep', '羊'], targetType: 'entity', referenceRig: 'pig', textureSize: [64, 32], texturePath: 'assets/minecraft/textures/entity/sheep/sheep.png',
       detection: singleDetection('entity', [63, 0], [2, 0, 0, 255], {mode: 'all'}, {anchor: 'body', size: 1.2})
     },
     arrow: {
-      name: 'Arrow', category: 'projectile', keywords: ['arrow', '箭'], targetType: 'entity', referenceRig: 'arrow', textureSize: [32, 32],
+      name: 'Arrow', category: 'projectile', keywords: ['arrow', '箭'], targetType: 'entity', referenceRig: 'arrow', textureSize: [32, 32], texturePath: 'assets/minecraft/textures/entity/projectiles/arrow.png',
       detection: singleDetection('entity', [31, 0], [0, 0, 1, 255], {mode: 'vertex_id', count: 9, index: 0}, {anchor: 'shaft', reverse: true, corner: 'yx', size: 1.5, hideUnmatched: true})
     },
     elytra: {
-      name: 'Elytra / Wings', category: 'equipment', keywords: ['elytra', 'wings', '鞘翅'], targetType: 'armor', referenceRig: 'elytra', textureSize: [64, 32],
+      name: 'Elytra / Wings', category: 'equipment', keywords: ['elytra', 'wings', '鞘翅'], targetType: 'armor', referenceRig: 'elytra', textureSize: [64, 32], texturePath: 'assets/minecraft/textures/entity/equipment/wings/elytra.png',
       detection: singleDetection('armor', [1, 0], [0, 0, 4, 255], {mode: 'vertex_id', count: 12, index: 5}, {anchor: 'body', reverse: true, size: 2, hideUnmatched: true})
     },
     player: {
@@ -802,7 +942,7 @@ return {toCemModel, toCemModels, bindingForCube, isReferenceCube};
     return pattern.test(source) ? source.replace(pattern, section) : `${source.replace(/[\\s\\n]*$/, '')}\n${section}\n`;
   }
 
-  function detectionSource(project) {
+  function detectionSource(project, baseTextureSize = null) {
     const detection = project.project.detection;
     const color = detection.color.join(', ');
     const [x, y] = detection.pixel;
@@ -813,6 +953,9 @@ return {toCemModel, toCemModels, bindingForCube, isReferenceCube};
       const cornerIndex = `(gl_VertexID + ${match.cornerOffset}) % 4`;
       return `uv - ${match.cornerSet}[${cornerIndex}] * vec2(${match.scale.join(', ')}) == vec2(${match.offset.join(', ')})`;
     };
+    const textureSetup = baseTextureSize
+      ? `\n    uv = floor(UV0 * vec2(${baseTextureSize.join(', ')}));\n    texCoord0 = UV0 * vec2(${baseTextureSize.join(', ')}) / vec2(textureSize(Sampler0, 0));`
+      : '';
     const branches = detection.branches.map((branch, index) => {
       const setup = [
         `cem = ${project.project.modelId + branch.modelIdOffset};`,
@@ -823,7 +966,7 @@ return {toCemModel, toCemModels, bindingForCube, isReferenceCube};
       return `    ${index ? 'else if' : 'if'} (${matchSource(branch.match)})\n    {\n${setup}\n    }`;
     }).join('\n');
     const unmatched = detection.hideUnmatched ? '\n    else\n    {\n        gl_Position = vec4(0);\n    }' : '';
-    return `// Generated by CEM-S Studio.\nif (${marker})\n{\n${branches}${unmatched}\n}`;
+    return `// Generated by CEM-S Studio.\nif (${marker})\n{${textureSetup}\n${branches}${unmatched}\n}`;
   }
 
   function buildPackFiles(document, modelGlsl, options = {}) {
@@ -841,10 +984,16 @@ return {toCemModel, toCemModels, bindingForCube, isReferenceCube};
       'assets/minecraft/shaders/include/cem_user/models.glsl': managedImport(project.modelId, modelPath),
       [`assets/minecraft/shaders/include/${modelPath}`]: modelGlsl.endsWith('\n') ? modelGlsl : `${modelGlsl}\n`,
       'assets/minecraft/shaders/include/cem_user/detection.glsl': managedImport(project.modelId, detectionPath),
-      [`assets/minecraft/shaders/include/${detectionPath}`]: detectionSource(document),
+      [`assets/minecraft/shaders/include/${detectionPath}`]: detectionSource(document, options.textureFile?.baseSize || null),
       'cem-studio/project.json': json(document),
       'cem-studio/README.txt': 'Generated by CEM-S Studio. Keep the CEM-S Studio managed sections when updating this pack.\n'
     };
+    if (options.textureFile) {
+      if (typeof options.textureFile.path !== 'string' || !options.textureFile.path.startsWith('assets/') || !options.textureFile.path.endsWith('.png')) throw new Error('textureFile.path must be an assets PNG path');
+      if (!(options.textureFile.content instanceof Uint8Array)) throw new Error('textureFile.content must be PNG bytes');
+      if (!Array.isArray(options.textureFile.baseSize) || options.textureFile.baseSize.length !== 2 || options.textureFile.baseSize.some(value => !Number.isInteger(value) || value <= 0)) throw new Error('textureFile.baseSize must be a positive ivec2');
+      generated[options.textureFile.path] = options.textureFile.content;
+    }
     return Object.assign({}, options.runtimeFiles || {}, generated);
   }
 
@@ -867,7 +1016,7 @@ return {toCemModel, toCemModels, bindingForCube, isReferenceCube};
     return result;
   }
 
-  return {slugify, buildPackFiles, mergePackFiles, upsertManagedSection};
+  return {slugify, buildPackFiles, mergePackFiles, upsertManagedSection, detectionSource};
 }));
 
 
@@ -957,6 +1106,7 @@ SOFTWARE.
   const {slugify, buildPackFiles, mergePackFiles} = CemSPackBuilder;
   const {loadRuntimeFiles} = CemSRuntime;
   const {profileFor, optionsFor, categoryOptionsFor, searchProfiles} = CemSEntityDatabase;
+  const {collectReferencedTextures, renderTextureAtlas} = CemSTextureAtlas;
   let exportAction;
   let exportDialog;
   let settingsAction;
@@ -1495,6 +1645,11 @@ SOFTWARE.
       return;
     }
     const settings = getSettings();
+    const referencedTextures = collectReferencedTextures(elements, Texture.all || [], {isReference: element => isReferenceCube(element, settings.reference)});
+    if (referencedTextures.length > 1) {
+      Blockbench.showMessageBox({title: 'CEM-S Studio export', message: 'This model uses multiple textures. Standalone GLSL cannot include a texture atlas; use Build CEM-S Resource Pack so Studio can generate and write the atlas automatically.'});
+      return;
+    }
     exportDialog = new Dialog({
       id: 'cem_s_studio_export',
       title: `Export CEM-S ${settings.cemVersion} Model`,
@@ -1529,7 +1684,8 @@ SOFTWARE.
       const fromRoot = path.relative(path.resolve(root), target);
       if (fromRoot === '..' || fromRoot.startsWith(`..${path.sep}`) || path.isAbsolute(fromRoot)) throw new Error(`refusing to write outside resource pack: ${relative}`);
       fs.mkdirSync(path.dirname(target), {recursive: true});
-      fs.writeFileSync(target, content, 'utf8');
+      if (content instanceof Uint8Array) fs.writeFileSync(target, content);
+      else fs.writeFileSync(target, content, 'utf8');
     }
   }
 
@@ -1548,7 +1704,22 @@ SOFTWARE.
       autoBindAttachments();
       const document = currentDocument();
       const elements = [...(Cube.all || []), ...(globalThis.Mesh?.all || [])];
-      const entries = toCemModels(document.project.name, elements, {reference: document.project.reference, branches: document.project.detection.branches});
+      const referencedTextures = collectReferencedTextures(elements, Texture.all || [], {isReference: element => isReferenceCube(element, document.project.reference)});
+      let textureAtlas = null;
+      let textureFile = null;
+      if (referencedTextures.length) {
+        const profile = profileFor(document.project.targetEntity, document.project.cemVersion);
+        if (!profile.texturePath) throw new Error(`${profile.name} uses a dynamic or custom Minecraft texture. Multi-texture pack export needs an explicit target texture path, which is not available for this entity profile.`);
+        const expected = profile.textureSize || [];
+        const primaryTexture = referencedTextures.find(texture => texture.width === expected[0] && texture.height === expected[1]);
+        if (!primaryTexture) throw new Error(`${profile.name} needs one referenced ${expected[0]}x${expected[1]} base entity texture before its additional Blockbench textures can be packed.`);
+        textureAtlas = renderTextureAtlas(referencedTextures, {
+          primaryTexture,
+          marker: {pixel: document.project.detection.pixel, color: document.project.detection.color}
+        });
+        textureFile = {path: profile.texturePath, content: textureAtlas.png, baseSize: expected.slice()};
+      }
+      const entries = toCemModels(document.project.name, elements, {reference: document.project.reference, branches: document.project.detection.branches, textureAtlas});
       const exported = entries.length === 1
         ? exportModel(entries[0].model, document.project.modelId, document.project.cemVersion, {modelScale: entries[0].branch.modelScale})
         : exportModels(entries, document.project.modelId, document.project.cemVersion);
@@ -1561,7 +1732,7 @@ SOFTWARE.
         throw new Error(`The folder "${root}" is not empty. Choose another location or use Update an existing CEM-S pack.`);
       }
       const runtimeFiles = mode === 'new' ? await loadRuntimeFiles(document.project.cemVersion) : {};
-      const generated = buildPackFiles(document, exported.glsl, {runtimeFiles});
+      const generated = buildPackFiles(document, exported.glsl, {runtimeFiles, textureFile});
       const aggregatorFiles = ['assets/minecraft/shaders/include/cem_user/models.glsl', 'assets/minecraft/shaders/include/cem_user/detection.glsl', 'pack.mcmeta'];
       const files = mode === 'new' ? generated : mergePackFiles(readExistingFiles(root, aggregatorFiles, fs), generated, document);
       writeFiles(root, files, fs);

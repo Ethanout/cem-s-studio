@@ -28,6 +28,8 @@ The generated folder can be copied directly into Minecraft's `resourcepacks` dir
 - Add a Player Reference model or register any imported mob Group, then bind attachment Groups to named anchors. Reference guide cubes are excluded automatically from export.
 - Import arbitrary vanilla/community `.bbmodel` files as reference skeletons; no per-mob hardcoded model list is required.
 - Reference guides stay visible in the editor but are excluded from Blockbench Create Texture templates and model export.
+- Multiple user textures are collected into a PNG atlas during resource-pack build. Cube and square UVs are remapped, reference-guide textures are excluded, and the generated detection shader compensates the original entity UV size when the atlas is larger than the vanilla texture.
+- Atlas export currently requires a referenced base texture with the selected profile's vanilla dimensions and a verified static `Sampler0` texture path. Player skins and custom dynamic texture sources remain an explicit runtime/resource-pack limitation.
 - Choose an Entity/Mob or Armor/Equipment render target for body attachments, armor, elytra, and similar equipment layers.
 - Non-uniform scale, meshes, disabled/rotated faces, locators, and animation export are rejected with diagnostics.
 

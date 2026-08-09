@@ -1,8 +1,9 @@
 (function (root, factory) {
-  const api = factory();
+  const atlas = typeof module === 'object' && module.exports ? require('./texture-atlas.js') : root.CemSTextureAtlas;
+  const api = factory(atlas);
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.CemSBlockbenchAdapter = api;
-}(typeof globalThis === 'undefined' ? this : globalThis, function () {
+}(typeof globalThis === 'undefined' ? this : globalThis, function (textureAtlas) {
 function vec3(value, fallback) {
   return Array.isArray(value) && value.length === 3 ? value.slice() : fallback.slice();
 }
@@ -110,7 +111,7 @@ function sameVec3(a, b) {
   return a.every((value, index) => nearlyEqual(value, b[index]));
 }
 
-function toCemSquareParts(mesh, index, anchorOrigin = [0, 0, 0]) {
+function toCemSquareParts(mesh, index, anchorOrigin = [0, 0, 0], atlas) {
   const vertices = mesh.vertices || {};
   const faces = mesh.faces || {};
   const parts = [];
@@ -133,18 +134,20 @@ function toCemSquareParts(mesh, index, anchorOrigin = [0, 0, 0]) {
     const localPoints = corners.slice(0, 3).map(item => points[item.id]);
     const expectedFourth = localPoints[1].map((value, axis) => value + localPoints[2][axis] - localPoints[0][axis]);
     if (!sameVec3(points[corners[3].id], expectedFourth)) throw new Error(`mesh "${mesh.name || 'unnamed'}" face "${faceKey}" must be a parallelogram for ADD_SQUARE`);
+    const placement = textureAtlas?.placementFor(atlas, face.texture);
+    if (atlas && face.texture && !placement) throw new Error(`mesh "${mesh.name || 'unnamed'}" face "${faceKey}" references a texture missing from the atlas`);
     parts.push({
       name: `${mesh.name || `mesh_${index + 1}`}/${faceKey}`,
       type: 'square',
       points: localPoints.map(point => transformPoint(mesh, point, anchorOrigin)),
-      uv: [minU, minV, maxU - minU, maxV - minV]
+      uv: placement ? textureAtlas.remapUvRect([minU, minV, maxU - minU, maxV - minV], placement) : [minU, minV, maxU - minU, maxV - minV]
     });
   }
   if (!parts.length) throw new Error(`mesh "${mesh.name || 'unnamed'}" has no exportable faces`);
   return parts;
 }
 
-function toCemCubePart(cube, index, anchorOrigin = [0, 0, 0]) {
+function toCemCubePart(cube, index, anchorOrigin = [0, 0, 0], atlas) {
   const from = vec3(cube.from, [0, 0, 0]);
   const to = vec3(cube.to, [0, 0, 0]);
   const faceOrder = ['down', 'up', 'north', 'east', 'south', 'west'];
@@ -156,9 +159,12 @@ function toCemCubePart(cube, index, anchorOrigin = [0, 0, 0]) {
     const rotation = ((Number(face.rotation) || 0) % 360 + 360) % 360;
     if (rotation === 90 || rotation === 270) throw new Error(`cube "${cube.name || 'unnamed'}" face "${side}" uses ${rotation}-degree UV rotation, which CEM-S ADD_BOX cannot represent`);
     if (rotation !== 0 && rotation !== 180) throw new Error(`cube "${cube.name || 'unnamed'}" face "${side}" has an invalid UV rotation`);
-    return rotation === 180
+    const sourceUv = rotation === 180
       ? [uv[2], uv[3], uv[0] - uv[2], uv[1] - uv[3]]
       : [uv[0], uv[1], uv[2] - uv[0], uv[3] - uv[1]];
+    const placement = textureAtlas?.placementFor(atlas, face.texture);
+    if (atlas && face.texture && !placement) throw new Error(`cube "${cube.name || 'unnamed'}" face "${side}" references a texture missing from the atlas`);
+    return placement ? textureAtlas.remapUvRect(sourceUv, placement) : sourceUv;
   });
   const rotation = vec3(cube.rotation, [0, 0, 0]);
   const hasParent = Boolean(cube.parent);
@@ -217,8 +223,8 @@ function toCemModel(name, cubes, options = {}) {
   const parts = exportable.flatMap((element, index) => {
     const anchorOrigin = anchorOriginForCube(element, options.reference);
     return element.vertices && element.faces
-      ? toCemSquareParts(element, index, anchorOrigin)
-      : [toCemCubePart(element, index, anchorOrigin)];
+      ? toCemSquareParts(element, index, anchorOrigin, options.textureAtlas)
+      : [toCemCubePart(element, index, anchorOrigin, options.textureAtlas)];
   });
   return {name: name || 'cem_model', parts};
 }

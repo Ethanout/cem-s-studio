@@ -121,6 +121,18 @@ test('builds a new resource pack with managed model and detection files', () => 
   assert.match(files['assets/minecraft/shaders/include/cem_user/models/entity/pig_ears.glsl'], /case 7/);
 });
 
+test('adds generated texture atlases as binary resource-pack files', () => {
+  const project = createProject({name: 'Pig Details', targetEntity: 'pig'});
+  const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+  const texturePath = 'assets/minecraft/textures/entity/pig/temperate_pig.png';
+  const files = buildPackFiles(project, 'case 1: { }', {textureFile: {path: texturePath, content: png, baseSize: [64, 32]}});
+  assert.equal(files[texturePath], png);
+  assert.deepEqual([...files[texturePath]], [...png]);
+  const detection = files['assets/minecraft/shaders/include/cem_user/detection/entity/pig_details.glsl'];
+  assert.match(detection, /uv = floor\(UV0 \* vec2\(64, 32\)\)/);
+  assert.match(detection, /texCoord0 = UV0 \* vec2\(64, 32\) \/ vec2\(textureSize\(Sampler0, 0\)\)/);
+});
+
 test('declares the modern resource-pack format range for 1.21.11 and 26.1+', () => {
   for (const [cemVersion, expectedFormat] of [['1.21.11', 75], ['26.1+', 84]]) {
     const project = createProject({name: 'Modern', cemVersion});

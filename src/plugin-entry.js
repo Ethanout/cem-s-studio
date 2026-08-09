@@ -6,6 +6,7 @@
   const {slugify, buildPackFiles, mergePackFiles} = CemSPackBuilder;
   const {loadRuntimeFiles} = CemSRuntime;
   const {profileFor, optionsFor, categoryOptionsFor, searchProfiles} = CemSEntityDatabase;
+  const {collectReferencedTextures, renderTextureAtlas} = CemSTextureAtlas;
   let exportAction;
   let exportDialog;
   let settingsAction;
@@ -544,6 +545,11 @@
       return;
     }
     const settings = getSettings();
+    const referencedTextures = collectReferencedTextures(elements, Texture.all || [], {isReference: element => isReferenceCube(element, settings.reference)});
+    if (referencedTextures.length > 1) {
+      Blockbench.showMessageBox({title: 'CEM-S Studio export', message: 'This model uses multiple textures. Standalone GLSL cannot include a texture atlas; use Build CEM-S Resource Pack so Studio can generate and write the atlas automatically.'});
+      return;
+    }
     exportDialog = new Dialog({
       id: 'cem_s_studio_export',
       title: `Export CEM-S ${settings.cemVersion} Model`,
@@ -578,7 +584,8 @@
       const fromRoot = path.relative(path.resolve(root), target);
       if (fromRoot === '..' || fromRoot.startsWith(`..${path.sep}`) || path.isAbsolute(fromRoot)) throw new Error(`refusing to write outside resource pack: ${relative}`);
       fs.mkdirSync(path.dirname(target), {recursive: true});
-      fs.writeFileSync(target, content, 'utf8');
+      if (content instanceof Uint8Array) fs.writeFileSync(target, content);
+      else fs.writeFileSync(target, content, 'utf8');
     }
   }
 
@@ -597,7 +604,22 @@
       autoBindAttachments();
       const document = currentDocument();
       const elements = [...(Cube.all || []), ...(globalThis.Mesh?.all || [])];
-      const entries = toCemModels(document.project.name, elements, {reference: document.project.reference, branches: document.project.detection.branches});
+      const referencedTextures = collectReferencedTextures(elements, Texture.all || [], {isReference: element => isReferenceCube(element, document.project.reference)});
+      let textureAtlas = null;
+      let textureFile = null;
+      if (referencedTextures.length) {
+        const profile = profileFor(document.project.targetEntity, document.project.cemVersion);
+        if (!profile.texturePath) throw new Error(`${profile.name} uses a dynamic or custom Minecraft texture. Multi-texture pack export needs an explicit target texture path, which is not available for this entity profile.`);
+        const expected = profile.textureSize || [];
+        const primaryTexture = referencedTextures.find(texture => texture.width === expected[0] && texture.height === expected[1]);
+        if (!primaryTexture) throw new Error(`${profile.name} needs one referenced ${expected[0]}x${expected[1]} base entity texture before its additional Blockbench textures can be packed.`);
+        textureAtlas = renderTextureAtlas(referencedTextures, {
+          primaryTexture,
+          marker: {pixel: document.project.detection.pixel, color: document.project.detection.color}
+        });
+        textureFile = {path: profile.texturePath, content: textureAtlas.png, baseSize: expected.slice()};
+      }
+      const entries = toCemModels(document.project.name, elements, {reference: document.project.reference, branches: document.project.detection.branches, textureAtlas});
       const exported = entries.length === 1
         ? exportModel(entries[0].model, document.project.modelId, document.project.cemVersion, {modelScale: entries[0].branch.modelScale})
         : exportModels(entries, document.project.modelId, document.project.cemVersion);
@@ -610,7 +632,7 @@
         throw new Error(`The folder "${root}" is not empty. Choose another location or use Update an existing CEM-S pack.`);
       }
       const runtimeFiles = mode === 'new' ? await loadRuntimeFiles(document.project.cemVersion) : {};
-      const generated = buildPackFiles(document, exported.glsl, {runtimeFiles});
+      const generated = buildPackFiles(document, exported.glsl, {runtimeFiles, textureFile});
       const aggregatorFiles = ['assets/minecraft/shaders/include/cem_user/models.glsl', 'assets/minecraft/shaders/include/cem_user/detection.glsl', 'pack.mcmeta'];
       const files = mode === 'new' ? generated : mergePackFiles(readExistingFiles(root, aggregatorFiles, fs), generated, document);
       writeFiles(root, files, fs);
