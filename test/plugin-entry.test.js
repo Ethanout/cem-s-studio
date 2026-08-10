@@ -54,9 +54,11 @@ test('registers the CEM-S Studio project format and resource-pack workflow', () 
   assert.match(source, /cem_emissive/);
   assert.match(source, /cem_per_face_lighting/);
   assert.match(source, /cem_tint/);
-  assert.match(source, /data-cem-entity="search"/);
-  assert.match(source, /data-cem-entity="category"/);
-  assert.match(source, /searchProfiles/);
+  assert.doesNotMatch(source, /data-cem-action="create-model"/);
+  assert.doesNotMatch(source, /data-cem-action="create-texture"/);
+  assert.doesNotMatch(source, /data-cem-entity="search"/);
+  assert.match(source, /model_identifier: false/);
+  assert.match(source, /请先使用 Blockbench 的 Outliner 创建至少一个用户 Cube 或 Mesh/);
   assert.match(source, /reference\.transforms/);
   assert.match(source, /偏移快照/);
   assert.match(source, /detectionForPreset\(presetName, version\)/);

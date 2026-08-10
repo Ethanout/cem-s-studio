@@ -5,7 +5,7 @@
   const {REFERENCE_PREFIX, REFERENCE_CUBE_PREFIX, anchorsFor, guidesFor, isReferenceGroup} = CemSReferenceRigs;
   const {slugify, buildPackFiles, buildWorkspacePackFiles, mergePackFiles} = CemSPackBuilder;
   const {loadRuntimeFiles} = CemSRuntime;
-  const {profileFor, optionsFor, categoryOptionsFor, searchProfiles} = CemSEntityDatabase;
+  const {profileFor, optionsFor} = CemSEntityDatabase;
   const {collectReferencedTextures, renderTextureAtlas} = CemSTextureAtlas;
   let exportAction;
   let exportDialog;
@@ -154,19 +154,18 @@
     setText('[data-cem-selection="scale"]', state.selection.mixed ? '多个值' : state.selection.scale || '—');
     const selectionDetails = studioPanel.node.querySelector('[data-cem-selection="details"]');
     if (selectionDetails) selectionDetails.hidden = state.selection.boundCount === 0;
-    const exportButton = studioPanel.node.querySelector('[data-cem-action="export"]');
     const buildButton = studioPanel.node.querySelector('[data-cem-action="build"]');
     const rebindButton = studioPanel.node.querySelector('[data-cem-action="rebind"]');
     const resetButton = studioPanel.node.querySelector('[data-cem-action="reset-anchor"]');
-    if (exportButton) exportButton.disabled = state.modelCount === 0;
-    if (buildButton) buildButton.disabled = state.modelCount === 0 || !!state.texture.issue;
+    if (buildButton) buildButton.disabled = false;
     if (rebindButton) rebindButton.disabled = !state.selection.canRebind || !state.hasReference;
     if (resetButton) resetButton.disabled = state.selection.boundCount === 0;
-    const entitySelect = studioPanel.node.querySelector('[data-cem-entity="profile"]');
-    if (entitySelect && entitySelect.dataset.version !== settings.cemVersion) populateStudioEntityBrowser();
+    const selectionPanel = studioPanel.node.querySelector('[data-cem-selection="panel"]');
+    if (selectionPanel) selectionPanel.hidden = state.selection.count === 0;
   }
 
   function populateWorkspaceBrowser() {
+    const panel = studioPanel?.node?.querySelector('[data-cem-workspace="panel"]');
     const select = studioPanel?.node?.querySelector('[data-cem-workspace="model"]');
     const state = studioPanel?.node?.querySelector('[data-cem-workspace="state"]');
     if (!select || !state) return;
@@ -177,85 +176,14 @@
       select.value = '__current';
       select.disabled = true;
       state.textContent = '单模型项目';
+      if (panel) panel.hidden = true;
       return;
     }
+    if (panel) panel.hidden = false;
     select.disabled = false;
     select.innerHTML = workspace.models.map(model => `<option value="${model.id}">${model.project.name} · ID ${model.project.modelId}</option>`).join('');
     select.value = workspace.activeModel;
     state.textContent = `${workspace.models.length} 个模型 · 当前 ${workspace.activeModel}`;
-  }
-
-  function populateStudioEntityBrowser() {
-    if (!studioPanel?.node) return;
-    const settings = getSettings();
-    const categorySelect = studioPanel.node.querySelector('[data-cem-entity="category"]');
-    const searchInput = studioPanel.node.querySelector('[data-cem-entity="search"]');
-    const profileSelect = studioPanel.node.querySelector('[data-cem-entity="profile"]');
-    if (!categorySelect || !searchInput || !profileSelect) return;
-    if (categorySelect.dataset.version !== settings.cemVersion) {
-      const categories = categoryOptionsFor(settings.cemVersion);
-      categorySelect.innerHTML = '<option value="all">全部分类</option>' + Object.entries(categories).map(([id, label]) => `<option value="${id}">${label}</option>`).join('');
-      categorySelect.dataset.version = settings.cemVersion;
-      categorySelect.value = 'all';
-    }
-    const matches = searchProfiles(searchInput.value, settings.cemVersion, categorySelect.value || 'all');
-    profileSelect.innerHTML = matches.map(profile => `<option value="${profile.id}">${profile.name}</option>`).join('');
-    profileSelect.dataset.version = settings.cemVersion;
-    if (matches.some(profile => profile.id === settings.targetEntity)) profileSelect.value = settings.targetEntity;
-  }
-
-  function applyStudioEntitySelection() {
-    const select = studioPanel?.node?.querySelector('[data-cem-entity="profile"]');
-    const profileId = select?.value;
-    if (!profileId) {
-      Blockbench.showQuickMessage('CEM-S Studio: no matching entity profile.');
-      return;
-    }
-    const settings = getSettings();
-    if (profileId === settings.targetEntity) return;
-    const profile = profileFor(profileId, settings.cemVersion);
-    const requestedRig = settings.referenceRig || profile.referenceRig;
-    const reference = settings.reference || {};
-    if (reference.root && reference.rig !== requestedRig) {
-      const root = findGroupByReference(reference.root);
-      const hasBindings = Object.keys(reference.bindings || {}).length > 0;
-      const hasAuthorElements = root && [...(globalThis.Cube?.all || []), ...(globalThis.Mesh?.all || [])].some(element => isInsideGroup(element, root) && !isReferenceCube(element, reference));
-      if (hasBindings || hasAuthorElements) {
-        Blockbench.showMessageBox({title: 'CEM-S Studio entity switch', message: 'Move or unbind author model parts from the current reference model before switching entity type.'});
-        return;
-      }
-      root?.remove?.();
-      Project.cem_studio = Object.assign({}, settings, {reference: {rig: 'none', root: null, anchors: {}, bindings: {}, transforms: {}, guides: []}});
-    }
-    setSettings({entity_profile: profileId, minecraft_version: settings.cemVersion});
-    if (requestedRig !== 'none' && !getSettings().reference?.root) addReferenceRig(requestedRig);
-    populateStudioEntityBrowser();
-    Blockbench.showQuickMessage(`CEM-S Studio: switched to ${profile.name}.`);
-  }
-
-  function createStudioModel() {
-    if (typeof Group !== 'function' || typeof Cube !== 'function') {
-      Blockbench.showMessageBox({title: 'CEM-S Studio', message: '当前 Blockbench 版本无法创建模型部件。'});
-      return;
-    }
-    Undo.initEdit({outliner: true, elements: []});
-    const group = new Group({name: 'CEM Model'}).init();
-    const cube = new Cube({name: 'Cube', from: [-2, 0, -2], to: [2, 4, 2]}).addTo(group).init();
-    Undo.finishEdit('Create CEM-S model part');
-    Outliner.selected.splice(0, Outliner.selected.length, cube);
-    Blockbench.dispatchEvent('update_selection');
-    Project.saved = false;
-    refreshStudioPanel();
-    globalThis.Canvas?.updateAll?.();
-  }
-
-  function createStudioTexture() {
-    const action = globalThis.BarItems?.create_texture;
-    if (action?.click) {
-      action.click();
-      return;
-    }
-    Blockbench.showMessageBox({title: 'CEM-S Studio', message: '请使用 Blockbench 的创建纹理功能。'});
   }
 
   function installStudioPanel() {
@@ -273,16 +201,15 @@
         <div data-cem-state="binding" style="margin-bottom: 8px"></div>
         <div data-cem-state="textures" style="margin-bottom: 8px"></div>
         <div data-cem-state="next" style="margin-bottom: 8px; color: var(--color-bright)"></div>
-        <div style="border-top: 1px solid var(--color-border); padding-top: 8px; margin-bottom: 8px">
+        <div data-cem-workspace="panel" style="border-top: 1px solid var(--color-border); padding-top: 8px; margin-bottom: 8px" hidden>
           <div style="font-weight: 600; margin-bottom: 4px">CEM-S 工作区</div>
           <div data-cem-workspace="state" style="margin-bottom: 4px">单模型项目</div>
           <div style="display: grid; grid-template-columns: 1fr auto; gap: 4px">
             <select data-cem-workspace="model" aria-label="工作区模型"></select>
             <button data-cem-action="switch-workspace" title="切换工作区模型"><i class="material-icons">swap_horiz</i></button>
           </div>
-          <button data-cem-action="add-workspace" title="添加模型到当前 .cemst 工作区" style="width: 100%; margin-top: 4px"><i class="material-icons">add</i> 添加模型</button>
         </div>
-        <div style="border-top: 1px solid var(--color-border); padding-top: 8px; margin-bottom: 8px">
+        <div data-cem-selection="panel" style="border-top: 1px solid var(--color-border); padding-top: 8px; margin-bottom: 8px" hidden>
           <div style="font-weight: 600; margin-bottom: 4px">选中挂件</div>
           <div data-cem-selection="summary" style="margin-bottom: 4px">未选择用户部件</div>
           <div data-cem-selection="details" style="font-size: 0.9em; opacity: 0.8" hidden>
@@ -291,30 +218,16 @@
             <div>缩放：<span data-cem-selection="scale"></span></div>
           </div>
         </div>
-        <div style="display: grid; gap: 4px; margin-bottom: 8px">
-          <input data-cem-entity="search" type="search" placeholder="搜索实体" aria-label="搜索实体">
-          <select data-cem-entity="category" aria-label="实体分类"></select>
-          <select data-cem-entity="profile" aria-label="实体类型"></select>
-          <button data-cem-action="apply-entity" title="应用实体类型"><i class="material-icons">check</i> 应用实体</button>
-        </div>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px">
-          <button data-cem-action="create-model" title="创建一个用户模型部件"><i class="material-icons">add_box</i> 创建模型</button>
-          <button data-cem-action="create-texture" title="打开 Blockbench 纹理创建器"><i class="material-icons">texture</i> 创建纹理</button>
           <button data-cem-action="settings" title="项目设置"><i class="material-icons">settings</i> 设置</button>
           <button data-cem-action="reference" title="添加参考模型"><i class="material-icons">accessibility</i> 参考模型</button>
           <button data-cem-action="render" title="设置选中部件的渲染属性"><i class="material-icons">palette</i> 渲染属性</button>
           <button data-cem-action="rebind" title="将选中的挂件移动到另一个锚点"><i class="material-icons">link</i> 重新绑定</button>
           <button data-cem-action="reset-anchor" title="将选中挂件重置到当前锚点"><i class="material-icons">my_location</i> 重置到锚点</button>
-          <button data-cem-action="export" title="导出模型"><i class="material-icons">save</i> 导出模型</button>
-          <button data-cem-action="build" title="创建资源包"><i class="material-icons">create_new_folder</i> 创建资源包</button>
+          <button data-cem-action="build" title="创建完整 CEM-S 资源包"><i class="material-icons">create_new_folder</i> 创建资源包</button>
         </div>
       </div>`;
-    studioPanel.node.querySelector('[data-cem-action="create-model"]').addEventListener('click', createStudioModel);
-    studioPanel.node.querySelector('[data-cem-action="create-texture"]').addEventListener('click', createStudioTexture);
     studioPanel.node.querySelector('[data-cem-action="settings"]').addEventListener('click', () => showProjectSettings(false));
-    studioPanel.node.querySelector('[data-cem-entity="search"]').addEventListener('input', populateStudioEntityBrowser);
-    studioPanel.node.querySelector('[data-cem-entity="category"]').addEventListener('change', populateStudioEntityBrowser);
-    studioPanel.node.querySelector('[data-cem-action="apply-entity"]').addEventListener('click', applyStudioEntitySelection);
     studioPanel.node.querySelector('[data-cem-action="reference"]').addEventListener('click', addConfiguredReference);
     studioPanel.node.querySelector('[data-cem-action="render"]').addEventListener('click', showRenderSettingsDialog);
     studioPanel.node.querySelector('[data-cem-action="rebind"]').addEventListener('click', showRebindAttachmentDialog);
@@ -323,10 +236,7 @@
       const id = studioPanel.node.querySelector('[data-cem-workspace="model"]')?.value;
       if (id && id !== '__current') switchWorkspaceModel(id);
     });
-    studioPanel.node.querySelector('[data-cem-action="add-workspace"]').addEventListener('click', addWorkspaceModel);
-    studioPanel.node.querySelector('[data-cem-action="export"]').addEventListener('click', exportCurrentProject);
     studioPanel.node.querySelector('[data-cem-action="build"]').addEventListener('click', () => buildResourcePack('new'));
-    populateStudioEntityBrowser();
     refreshStudioPanel();
   }
 
@@ -481,9 +391,8 @@
     const settings = getSettings();
     const primaryBranch = settings.detection.branches[0];
     const form = {
-      project_name: {label: 'Project name', type: 'text', value: settings.name},
       minecraft_version: {label: 'Minecraft version', description: 'Selects the bundled CEM-S core shaders and resource-pack format.', type: 'select', options: {'1.21.6': '1.21.6', '1.21.11': '1.21.11', '26.1+': '26.1+ (26.1.2 runtime)'}, value: settings.cemVersion},
-      model_id: {label: 'Model ID', description: 'Keep this ID unique in the target resource pack.', type: 'number', value: settings.modelId, min: 0, step: 1},
+      model_id: {label: 'CEM-S Model ID', description: 'Keep this numeric ID unique in the target resource pack.', type: 'number', value: settings.modelId, min: 0, step: 1},
       entity_profile: {label: 'Entity type', description: 'Chooses the reference model and CEM-S detection profile.', type: 'select', options: optionsFor(settings.cemVersion), value: settings.targetEntity},
       reference_rig: {label: 'Reference model', description: 'Choose the coordinate skeleton used for positioning attachments. It can differ from the rendered host entity.', type: 'select', options: {none: 'None', player: 'Player', pig: 'Pig', elytra: 'Elytra / Armor', arrow: 'Arrow / Projectile', armor_stand: 'Armor Stand'}, value: settings.referenceRig || settings.reference?.rig || 'none'},
       attachment_mode: {label: '模型用途', description: '挂件会保留作为锚点的原版表面；替换模型会移除该表面。', type: 'select', options: {overlay: '挂件 / 叠加在原模型上', replace: '替换命中的原版表面'}, value: settings.detection.matchedFaceMode || 'overlay'},
@@ -1052,6 +961,9 @@
   async function buildResourcePack(mode) {
     try {
       const document = currentDocument();
+      const state = studioPanelState();
+      if (!state.modelCount) throw new Error('请先使用 Blockbench 的 Outliner 创建至少一个用户 Cube 或 Mesh，再创建资源包。');
+      if (state.texture.issue) throw new Error(state.texture.issue);
       const selected = Blockbench.pickDirectory({title: mode === 'new' ? 'Choose where to create the resource pack' : 'Choose existing CEM-S resource pack folder', resource_id: 'cem_s_studio_pack'});
       if (!selected) return;
       const path = require('path');
@@ -1129,6 +1041,7 @@
       optional_box_uv: true,
       single_texture: false,
       per_texture_uv_size: true,
+      model_identifier: false,
       bone_rig: true,
       rotate_cubes: true,
       meshes: true,
@@ -1183,7 +1096,7 @@
     author: 'CEM-S Studio contributors',
     description: 'A Blockbench project format and resource-pack builder for CEM-S on Minecraft 1.21.6, 1.21.11, and 26.1+.',
     icon: 'extension',
-    version: '0.7.0',
+    version: '0.8.1-beta',
     min_version: '4.12.0',
     variant: 'desktop',
     onload() {
