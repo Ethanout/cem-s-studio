@@ -262,7 +262,10 @@ function toCemModel(name, cubes, options = {}) {
       ? toCemSquareParts(element, index, anchorOrigin, options.textureAtlas)
       : [toCemCubePart(element, index, anchorOrigin, options.textureAtlas)];
   });
-  return {name: name || 'cem_model', parts};
+  const model = {name: name || 'cem_model', parts};
+  if (options.textureSource) model.textureSource = options.textureSource;
+  if (options.textureAnimation) model.textureAnimation = options.textureAnimation;
+  return model;
 }
 
 function toCemModels(name, cubes, options = {}) {

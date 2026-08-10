@@ -23,6 +23,19 @@ test('persists an explicit target texture path for dynamic entities', () => {
   assert.throws(() => createProject({texturePath: 'textures/invalid.png'}), /project.texturePath/);
 });
 
+test('persists host and animated Sampler0 texture modes', () => {
+  const host = createProject({name: 'Player Skin', targetEntity: 'player', textureSource: 'host_sampler0'});
+  assert.equal(host.project.textureSource, 'host_sampler0');
+  assert.equal(host.project.detection.mode, 'direct');
+  assert.equal(host.project.detection.markerMode, 'none');
+  assert.deepEqual(parseProject(serializeProject(host)).project.textureAnimation, {frameCount: 1, frameDurationTicks: 1});
+  const animated = createProject({name: 'Animated Pig', targetEntity: 'pig', textureSource: 'animated_sampler0', texturePath: 'assets/minecraft/textures/entity/pig/animated.png', textureAnimation: {frameCount: 4, frameDurationTicks: 3}});
+  const parsed = parseProject(serializeProject(animated));
+  assert.equal(parsed.project.textureSource, 'animated_sampler0');
+  assert.deepEqual(parsed.project.textureAnimation, {frameCount: 4, frameDurationTicks: 3});
+  assert.throws(() => createProject({textureSource: 'animated_sampler0'}), /frameCount/);
+});
+
 test('supports multiple static texture targets for entity variants', () => {
   const project = createProject({
     name: 'Pig Variants', targetEntity: 'pig',
@@ -216,6 +229,14 @@ test('builds a new resource pack with managed model and detection files', () => 
   assert.match(files['assets/minecraft/shaders/include/cem_user/models/entity/pig_ears.glsl'], /case 7/);
 });
 
+test('builds direct detection without requiring a marker pixel', () => {
+  const project = createProject({name: 'Player Skin', targetEntity: 'player', textureSource: 'host_sampler0'});
+  const files = buildPackFiles(project, 'case 1: { }');
+  const detection = files['assets/minecraft/shaders/include/cem_user/detection/entity/player_skin.glsl'];
+  assert.match(detection, /if \(true\)/);
+  assert.doesNotMatch(detection, /texelFetch\(Sampler0, ivec2\(63, 0\)/);
+});
+
 test('adds generated texture atlases as binary resource-pack files', () => {
   const project = createProject({name: 'Pig Details', targetEntity: 'pig'});
   const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
@@ -240,6 +261,19 @@ test('writes one generated atlas to all configured variant texture paths', () =>
   const mapping = JSON.parse(files['cem-studio/texture-mappings/pig_variants.json']);
   assert.deepEqual(mapping.paths, paths);
   assert.deepEqual(mapping.baseSize, [64, 32]);
+});
+
+test('records host and animated Sampler0 texture mappings without generating a fake atlas', () => {
+  const host = createProject({name: 'Player Skin', targetEntity: 'player', textureSource: 'host_sampler0'});
+  const hostFiles = buildPackFiles(host, 'case 1: { }', {textureSettings: {baseSize: [64, 64], paths: []}});
+  assert.equal(hostFiles['cem-studio/texture-mappings/player_skin.json'] !== undefined, true);
+  assert.equal(Object.keys(hostFiles).some(path => path.endsWith('.png')), false);
+  const animated = createProject({name: 'Animated Pig', targetEntity: 'pig', textureSource: 'animated_sampler0', texturePath: 'assets/minecraft/textures/entity/pig/animated.png', textureAnimation: {frameCount: 4, frameDurationTicks: 2}});
+  const animatedFiles = buildPackFiles(animated, 'case 1: { }', {textureSettings: {path: animated.project.texturePath, paths: [animated.project.texturePath], baseSize: [64, 64], animation: animated.project.textureAnimation}});
+  const mapping = JSON.parse(animatedFiles['cem-studio/texture-mappings/animated_pig.json']);
+  assert.equal(mapping.source, 'animated_sampler0');
+  assert.deepEqual(mapping.animation, {frameCount: 4, frameDurationTicks: 2});
+  assert.match(animatedFiles['assets/minecraft/shaders/include/cem_user/detection/entity/animated_pig.glsl'], /texCoord0 = UV0 \* vec2\(64, 64\)/);
 });
 
 test('declares the modern resource-pack format range for 1.21.11 and 26.1+', () => {

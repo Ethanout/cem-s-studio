@@ -15,6 +15,39 @@ flat in vec4 cem_light;
 
 #define MAX_DEPTH 1000000
 
+// CEM-S Studio texture source: 0 = host Sampler0, 1 = vertical animated Sampler0.
+int cem_texture_source = 0;
+int cem_texture_frame_count = 1;
+int cem_texture_frame_ticks = 1;
+
+ivec2 cemTexturePixel(vec2 pixel)
+{
+    ivec2 size = textureSize(Sampler0, 0);
+    vec2 mapped = pixel;
+    if (cem_texture_source == 1 && cem_texture_frame_count > 1)
+    {
+        float frameHeight = max(1.0, floor(float(size.y) / float(cem_texture_frame_count)));
+        float frame = mod(floor(GameTime * 24000.0 / float(cem_texture_frame_ticks)), float(cem_texture_frame_count));
+        mapped = vec2(pixel.x, mod(pixel.y, frameHeight) + frame * frameHeight);
+    }
+    return clamp(ivec2(floor(mapped)), ivec2(0), size - 1);
+}
+
+vec4 cemTexelFetch(vec2 pixel)
+{
+    return texelFetch(Sampler0, cemTexturePixel(pixel), 0);
+}
+
+vec4 cemTextureSample(vec2 pixel)
+{
+    vec2 size = vec2(textureSize(Sampler0, 0));
+    if (cem_texture_source != 1 || cem_texture_frame_count <= 1)
+        return texture(Sampler0, pixel / size);
+    float frameHeight = max(1.0, floor(size.y / float(cem_texture_frame_count)));
+    float frame = mod(floor(GameTime * 24000.0 / float(cem_texture_frame_ticks)), float(cem_texture_frame_count));
+    return texture(Sampler0, vec2(pixel.x, mod(pixel.y, frameHeight) + frame * frameHeight) / size);
+}
+
 #define ADD_SQUARE(p1, p2, p3, uv) { \
 color = sSquare(-center, dirTBN, p1 * modelSize, p2 * modelSize, p3 * modelSize, CEM_VERTEX_COLOR, color, minT, uv);\
 }
@@ -138,7 +171,7 @@ vec4 sSquare(vec3 ro, vec3 rd, vec3 p1, vec3 p2, vec3 p3, vec4 tint, vec4 color,
 
     if (tris.z >= T) return color;
 
-    vec4 col = texelFetch(Sampler0, ivec2(uv.xy + uv.zw * tris.xy), 0) * tint;
+    vec4 col = cemTexelFetch(uv.xy + uv.zw * tris.xy) * tint;
     
     if (col.a < 0.1) return color;
 
@@ -152,7 +185,7 @@ vec4 sTris(vec3 ro, vec3 rd, vec3 p1, vec3 p2, vec3 p3, vec4 color, inout float 
 
     if (tris.z >= T) return color;
 
-    vec4 col = texelFetch(Sampler0, ivec2(uv.xy + uv.zw * tris.xy), 0);
+    vec4 col = cemTexelFetch(uv.xy + uv.zw * tris.xy);
     
     if (col.a < 0.1) return color;
 
@@ -189,27 +222,27 @@ vec4 sBoxWithRotationsRender(vec3 ro, vec3 rd, vec3 size, mat3 TBN, vec4 color, 
 
     if (normal.x > 0.9) //East
     {
-        col = texture(Sampler0, (eSide.xy + eSide.zw * rotateBoxUv(box.xy, sideRotations.w)) / texSize);
+        col = cemTextureSample(eSide.xy + eSide.zw * rotateBoxUv(box.xy, sideRotations.w));
     }
     else if (normal.x < -0.9) //West
     {
-        col = texture(Sampler0, (wSide.xy + wSide.zw * rotateBoxUv(vec2(1 - box.x, box.y), sideRotations2.y)) / texSize);
+        col = cemTextureSample(wSide.xy + wSide.zw * rotateBoxUv(vec2(1 - box.x, box.y), sideRotations2.y));
     }
     else if (normal.z > 0.9) //South
     {
-        col = texture(Sampler0, (sSide.xy + sSide.zw * rotateBoxUv(vec2(1 - box.x, box.y), sideRotations2.x)) / texSize);
+        col = cemTextureSample(sSide.xy + sSide.zw * rotateBoxUv(vec2(1 - box.x, box.y), sideRotations2.x));
     }
     else if (normal.z < -0.9) //North
     {
-        col = texture(Sampler0, (nSide.xy + nSide.zw * rotateBoxUv(box.xy, sideRotations.z)) / texSize);
+        col = cemTextureSample(nSide.xy + nSide.zw * rotateBoxUv(box.xy, sideRotations.z));
     }
     else if (normal.y > 0.9) //Up
     {
-        col = texture(Sampler0, (uSide.xy + uSide.zw * rotateBoxUv(box.xy, sideRotations.y)) / texSize);
+        col = cemTextureSample(uSide.xy + uSide.zw * rotateBoxUv(box.xy, sideRotations.y));
     }
     else if (normal.y < -0.9) //Down
     {
-        col = texture(Sampler0, (dSide.xy + dSide.zw * rotateBoxUv(box.xy, sideRotations.x)) / texSize);
+        col = cemTextureSample(dSide.xy + dSide.zw * rotateBoxUv(box.xy, sideRotations.x));
     }
 
     col *= tint;

@@ -12,6 +12,14 @@ test('bundled CEM-S runtime exposes per-part render property macros', () => {
   assert.match(source, /cem_lightMapColor/);
 });
 
+test('bundled CEM-S runtime exposes animated Sampler0 texture sampling', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'vendor', 'cem-s', 'assets', 'minecraft', 'shaders', 'include', 'cem', 'frag_funcs.glsl'), 'utf8');
+  assert.match(source, /cem_texture_source/);
+  assert.match(source, /cem_texture_frame_count/);
+  assert.match(source, /GameTime \* 24000\.0/);
+  assert.match(source, /cemTexturePixel/);
+});
+
 test('identifies expanded quad triangles from their carried vertices', () => {
   const source = fs.readFileSync(path.join(__dirname, '..', 'vendor', 'cem-s', 'assets', 'minecraft', 'shaders', 'include', 'cem', 'frag_main_setup.glsl'), 'utf8');
   assert.match(source, /dFdx\(cem_pos2\.w\)/);

@@ -7,6 +7,7 @@
   const CURRENT_VERSION = 3;
   const LEGACY_VERSION = 2;
   const SUPPORTED_CEM_VERSIONS = {'1.21.6': 63, '1.21.11': 75, '26.1+': 84};
+  const TEXTURE_SOURCES = ['static_atlas', 'host_sampler0', 'animated_sampler0'];
   if (!entityDatabase) throw new Error('CEM-S entity database is required');
   const DETECTION_PRESETS = Object.fromEntries(Object.keys(entityDatabase.ENTITY_PROFILES).map(id => [id, entityDatabase.ENTITY_PROFILES[id].detection]));
 
@@ -30,6 +31,21 @@
       if (!paths.includes(path)) paths.push(path);
     }
     return paths;
+  }
+
+  function normalizeTextureSource(source) {
+    const value = source || 'static_atlas';
+    if (!TEXTURE_SOURCES.includes(value)) throw new Error(`unsupported project.textureSource: ${value}`);
+    return value;
+  }
+
+  function normalizeTextureAnimation(animation) {
+    const source = animation || {};
+    const frameCount = source.frameCount === undefined ? 1 : Number(source.frameCount);
+    const frameDurationTicks = source.frameDurationTicks === undefined ? 1 : Number(source.frameDurationTicks);
+    if (!Number.isInteger(frameCount) || frameCount < 1) throw new Error('project.textureAnimation.frameCount must be a positive integer');
+    if (!Number.isInteger(frameDurationTicks) || frameDurationTicks < 1) throw new Error('project.textureAnimation.frameDurationTicks must be a positive integer');
+    return {frameCount, frameDurationTicks};
   }
 
   function detectionForPreset(name, version = '1.21.6') {
@@ -59,6 +75,7 @@
     if (source.pixel) detection.pixel = clone(source.pixel);
     if (source.color) detection.color = clone(source.color);
     if (source.channel !== undefined) detection.channel = source.channel;
+    detection.markerMode = source.markerMode || detection.markerMode || 'texture_marker';
     const presetBranch = Array.isArray(detection.branches) ? detection.branches[0] : {};
     const fallbackBranch = {
       face: source.face || detection.face || presetBranch.match,
@@ -85,7 +102,7 @@
     detection.hideUnmatched = detection.originalMode === 'hide_unmatched';
     detection.matchedFaceMode = source.matchedFaceMode || detection.matchedFaceMode || 'overlay';
     if (!['overlay', 'replace'].includes(detection.matchedFaceMode)) throw new Error('detection.matchedFaceMode must be overlay or replace');
-    detection.mode = 'texture_marker';
+    detection.mode = detection.markerMode === 'none' ? 'direct' : 'texture_marker';
     return detection;
   }
 
@@ -95,8 +112,10 @@
     if (!document.project || typeof document.project.name !== 'string' || !document.project.name.trim()) throw new Error('project.name is required');
     assertModelId(document.project.modelId);
     if (!Object.prototype.hasOwnProperty.call(SUPPORTED_CEM_VERSIONS, document.project.cemVersion)) throw new Error(`unsupported Minecraft runtime: ${document.project.cemVersion}`);
-    if (!document.project.detection || document.project.detection.mode !== 'texture_marker') throw new Error('only texture_marker detection is supported');
+    if (!document.project.detection || !['texture_marker', 'direct'].includes(document.project.detection.mode)) throw new Error('unsupported detection mode');
     const detection = document.project.detection;
+    if (!['texture_marker', 'none'].includes(detection.markerMode || 'texture_marker')) throw new Error('detection.markerMode must be texture_marker or none');
+    if (detection.mode === 'direct' && detection.markerMode !== 'none') throw new Error('direct detection requires markerMode none');
     if (!Array.isArray(detection.pixel) || detection.pixel.length !== 2 || detection.pixel.some((value) => !Number.isInteger(value) || value < 0)) throw new Error('detection.pixel must be a non-negative ivec2');
     if (!Array.isArray(detection.color) || detection.color.length !== 4 || detection.color.some((value) => !Number.isInteger(value) || value < 0 || value > 255)) throw new Error('detection.color must be an RGBA byte color');
     if (!Object.prototype.hasOwnProperty.call(DETECTION_PRESETS, detection.preset)) throw new Error(`unsupported detection preset: ${detection.preset}`);
@@ -145,6 +164,11 @@
     const texturePaths = normalizeTexturePaths(document.project.texturePath, document.project.texturePaths);
     document.project.texturePath = texturePaths[0] || null;
     document.project.texturePaths = texturePaths;
+    document.project.textureSource = normalizeTextureSource(document.project.textureSource);
+    document.project.textureAnimation = normalizeTextureAnimation(document.project.textureAnimation);
+    if (document.project.textureSource === 'animated_sampler0' && document.project.textureAnimation.frameCount < 2) {
+      throw new Error('animated_sampler0 requires project.textureAnimation.frameCount >= 2');
+    }
     const reference = document.project.reference || {rig: 'none', root: null, anchors: {}, bindings: {}, transforms: {}, guides: []};
     if (!['none', 'player', 'pig', 'elytra', 'arrow', 'armor_stand', 'custom'].includes(reference.rig)) throw new Error('project.reference.rig is unsupported');
     if (reference.root !== null && typeof reference.root !== 'string') throw new Error('project.reference.root must be a string or null');
@@ -205,6 +229,15 @@
     const targetType = options.targetType || (detection.channel === 'armor' ? 'armor' : 'entity');
     const texturePaths = normalizeTexturePaths(options.texturePath, options.texturePaths);
     const texturePath = texturePaths[0] || null;
+    const textureSource = normalizeTextureSource(options.textureSource);
+    const textureAnimation = normalizeTextureAnimation(options.textureAnimation);
+    if (textureSource === 'host_sampler0' && targetEntity === 'player' && options.detection?.markerMode === undefined) {
+      detection.markerMode = 'none';
+      detection.mode = 'direct';
+    }
+    if (textureSource === 'animated_sampler0' && textureAnimation.frameCount < 2) {
+      throw new Error('animated_sampler0 requires textureAnimation.frameCount >= 2');
+    }
     assertModelId(modelId);
     return {
       format: 'cemst',
@@ -218,6 +251,8 @@
         referenceRig: options.referenceRig || (entityDatabase.profileFor(inferredPreset, cemVersion).referenceRig || 'none'),
         texturePath,
         texturePaths,
+        textureSource,
+        textureAnimation,
         detection,
         reference: options.reference ? clone(options.reference) : {rig: 'none', root: null, anchors: {}, bindings: {}, transforms: {}, guides: []},
         resourcePack: {

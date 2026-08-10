@@ -33,6 +33,16 @@ CEM-S Studio 是面向 Minecraft 1.21.6、1.21.11 和 26.1+ 的 CEM-S Blockbench
 
 参考 guide 不会参与 Blockbench 的 **Create Texture** 模板生成，因此创建挂件材质时只会考虑用户自己的可见模型。
 
+### 动态纹理
+
+在 **Advanced Settings -> Texture source** 中选择纹理来源：
+
+- `Static atlas`：默认模式，把多个 Blockbench 纹理合成为一张静态 PNG。
+- `Host dynamic texture / Sampler0`：直接采样当前宿主纹理，适合玩家皮肤和实体变种；UV 不会被改写。玩家皮肤没有 CEM marker 时，需使用 `Direct UV / vertex detection`，并确认检测分支只匹配目标实体。
+- `Animated Sampler0 frame strip`：采样资源包中目标路径的竖向动画帧图。填写固定 `Target texture path`、帧数和每帧 tick；插件不会覆盖该 PNG，需由资源包作者提供对应文件。
+
+这些模式都使用 Minecraft 当前渲染通道的 `Sampler0`。因此同一个渲染层不能同时把原宿主纹理和另一张独立动态纹理绑定到两个 sampler；跨渲染层读取玩家皮肤（例如鞘翅宿主读取玩家皮肤）仍需要 CEM-S/Fabric runtime 提供额外纹理绑定。
+
 ## 当前支持范围
 
 - 内置 Minecraft 1.21.6、1.21.11 和 26.1+ runtime；目前真实客户端证据为 Fabric 1.21.11，其他版本应视为待独立实机验证的候选支持。
@@ -45,8 +55,9 @@ CEM-S Studio 是面向 Minecraft 1.21.6、1.21.11 和 26.1+ 的 CEM-S Blockbench
 - 玩家参考模型和任意生物参考 Group 的挂件绑定。
 - 从 `.bbmodel` 导入任意原版/社区生物模型作为参考骨架。
 - `Entity / Mob` 与 `Armor / Equipment` 输出目标。
+- 宿主 `Sampler0` 动态纹理直通，以及竖向动画帧 `Sampler0` 采样。
 
-- 暂不支持任意动画导出和无法表达为矩形的复杂 Mesh 面；Cube/父组旋转、方形 Mesh、定位器、禁用面和逐面 UV 旋转已支持。无法表达的几何会停止导出并给出错误，而不会静默生成错误模型。
+- 暂不支持 Blockbench 时间轴动画导出、跨渲染层的独立动态 sampler，以及无法表达为矩形的复杂 Mesh 面；Cube/父组旋转、方形 Mesh、定位器、禁用面和逐面 UV 旋转已支持。无法表达的几何会停止导出并给出错误模型，而不会静默生成错误模型。
 
 ## 开发验证
 

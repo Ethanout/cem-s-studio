@@ -51,6 +51,14 @@
       const expected = profile.textureSize || [];
       const hasBaseTexture = textures.some(texture => texture.width === expected[0] && texture.height === expected[1]);
       let issue = null;
+      const textureSource = settings.textureSource || 'static_atlas';
+      if (textureSource === 'host_sampler0') return {count: textures.length, hasBaseTexture: true, issue: null, expected, source: textureSource};
+      if (textureSource === 'animated_sampler0') {
+        const animatedPaths = settings.texturePaths?.length ? settings.texturePaths : (settings.texturePath ? [settings.texturePath] : []);
+        if (!animatedPaths.length) issue = '动画 Sampler0 需要填写固定 Target texture path';
+        else if (!settings.textureAnimation || settings.textureAnimation.frameCount < 2) issue = '动画 Sampler0 至少需要 2 帧';
+        return {count: textures.length, hasBaseTexture: true, issue, expected, source: textureSource};
+      }
       const configuredPaths = settings.texturePaths?.length ? settings.texturePaths : (settings.texturePath ? [settings.texturePath] : []);
       if (textures.length && !(configuredPaths.length || profile.texturePath)) issue = '当前实体使用动态纹理，无法自动写入玩家皮肤；请在高级设置指定可被资源包覆盖的纹理路径';
       else if (textures.length && !hasBaseTexture) issue = `需要 ${expected[0]}×${expected[1]} 基础纹理`;
@@ -130,7 +138,8 @@
     const referenceLabel = state.hasReference ? `${state.anchorCount} 个锚点` : '未添加';
     const transformCount = Object.keys(settings.reference?.transforms || {}).length;
     const bindingLabel = state.bindingCount ? `${state.bindingCount} 个已绑定 · ${transformCount} 个偏移快照` : '暂无绑定';
-    const textureLabel = state.texture.count ? `${state.texture.count} 张用户纹理${state.texture.hasBaseTexture ? '' : '（缺少基础纹理）'}` : '未指定用户纹理';
+    const textureSourceLabels = {static_atlas: '静态图集', host_sampler0: '宿主动态纹理', animated_sampler0: '动画 Sampler0'};
+    const textureLabel = `${textureSourceLabels[settings.textureSource || 'static_atlas'] || '静态图集'} · ${state.texture.count ? `${state.texture.count} 张用户纹理` : '未指定用户纹理'}`;
     const next = !state.hasReference ? '先添加参考模型' : !state.modelCount ? '创建一个 Cube 或 Mesh' : !state.bindingCount ? '把模型拖入参考锚点' : state.texture.issue || '可以创建资源包';
     const setText = (selector, value) => { const node = studioPanel.node.querySelector(selector); if (node) node.textContent = value; };
     setText('[data-cem-state="entity"]', `${entityName} · ${settings.cemVersion}`);
@@ -445,6 +454,8 @@
     detection.originalMode = result.original_model_mode || currentDetection.originalMode || (detection.hideUnmatched ? 'hide_unmatched' : 'keep');
     detection.hideUnmatched = detection.originalMode === 'hide_unmatched';
     detection.matchedFaceMode = value('attachment_mode', currentDetection.matchedFaceMode || 'overlay');
+    detection.markerMode = value('marker_mode', currentDetection.markerMode || 'texture_marker');
+    detection.mode = detection.markerMode === 'none' ? 'direct' : 'texture_marker';
     const next = createProject({
       ...current,
       name: value('project_name', current.name),
@@ -456,6 +467,8 @@
       referenceRig: value('reference_rig', current.referenceRig || profile.referenceRig || 'none'),
       texturePath: value('texture_path', current.texturePath || null),
       texturePaths: parseTexturePaths(value('texture_paths', (current.texturePaths || []).slice(1).join('\n'))),
+      textureSource: value('texture_source', current.textureSource || 'static_atlas'),
+      textureAnimation: {frameCount: Number(value('animation_frames', current.textureAnimation?.frameCount || 1)), frameDurationTicks: Number(value('animation_ticks', current.textureAnimation?.frameDurationTicks || 1))},
       resourcePack: {name: value('pack_name', current.resourcePack.name), description: value('pack_description', current.resourcePack.description), packFormat: SUPPORTED_CEM_VERSIONS[version]}
     }).project;
     Project.cem_studio = next;
@@ -478,6 +491,7 @@
     };
     if (advanced) Object.assign(form, {
       render_target: {label: 'Render target', description: 'Use Armor / Equipment for elytra and armor attachments.', type: 'select', options: {entity: 'Entity / Mob', armor: 'Armor / Equipment'}, value: settings.targetType},
+      marker_mode: {label: 'Detection marker', description: 'Host dynamic textures such as player skins cannot be modified with a marker pixel; direct mode relies only on the configured geometry match.', type: 'select', options: {texture_marker: 'Require texture marker', none: 'Direct UV / vertex detection'}, value: settings.detection.markerMode || 'texture_marker'},
       marker_x: {label: 'Marker pixel X', type: 'number', value: settings.detection.pixel[0], min: 0, step: 1},
       marker_y: {label: 'Marker pixel Y', type: 'number', value: settings.detection.pixel[1], min: 0, step: 1},
       marker_r: {label: 'Marker red', type: 'number', value: settings.detection.color[0], min: 0, max: 255, step: 1},
@@ -492,6 +506,9 @@
       original_model_mode: {label: 'Original model visibility', description: 'Keep unmatched vanilla parts, or hide them when using the CEM-S model as a full replacement.', type: 'select', options: {keep: 'Keep unmatched vanilla parts', hide_unmatched: 'Hide unmatched vanilla parts'}, value: settings.detection.originalMode || (settings.detection.hideUnmatched ? 'hide_unmatched' : 'keep')},
       texture_path: {label: 'Target texture path', description: 'For dynamic or expert entities, e.g. assets/minecraft/textures/entity/custom.png.', type: 'text', value: settings.texturePath || ''},
       texture_paths: {label: 'Additional variant texture paths', description: 'Optional resource-pack PNG paths, one per line. Studio writes the same generated atlas to every listed variant.', type: 'textarea', value: (settings.texturePaths || []).slice(1).join('\n')},
+      texture_source: {label: 'Texture source', description: 'Host uses the current entity texture. Animated uses a vertical frame strip already present in the resource pack.', type: 'select', options: {static_atlas: 'Static atlas / multiple Blockbench textures', host_sampler0: 'Host dynamic texture / Sampler0', animated_sampler0: 'Animated Sampler0 frame strip'}, value: settings.textureSource || 'static_atlas'},
+      animation_frames: {label: 'Animation frame count', description: 'Vertical frame count for animated Sampler0.', type: 'number', value: settings.textureAnimation?.frameCount || 1, min: 1, step: 1},
+      animation_ticks: {label: 'Ticks per frame', description: 'Minecraft ticks spent on each animation frame.', type: 'number', value: settings.textureAnimation?.frameDurationTicks || 1, min: 1, step: 1},
       pack_description: {label: 'Resource pack description', type: 'text', value: settings.resourcePack.description}
     });
     settingsDialog = new Dialog({
@@ -944,7 +961,7 @@
     }
     const settings = getSettings();
     const referencedTextures = collectReferencedTextures(elements, Texture.all || [], {isReference: element => isReferenceCube(element, settings.reference)});
-    if (referencedTextures.length > 1) {
+    if (referencedTextures.length > 1 && (settings.textureSource || 'static_atlas') === 'static_atlas') {
       Blockbench.showMessageBox({title: 'CEM-S Studio export', message: 'This model uses multiple textures. Standalone GLSL cannot include a texture atlas; use Build CEM-S Resource Pack so Studio can generate and write the atlas automatically.'});
       return;
     }
@@ -956,10 +973,10 @@
         exportDialog.hide();
         try {
           const document = currentDocument();
-          const entries = toCemModels(document.project.name, elements, {reference: document.project.reference, branches: document.project.detection.branches});
+          const entries = toCemModels(document.project.name, elements, {reference: document.project.reference, branches: document.project.detection.branches, textureSource: document.project.textureSource, textureAnimation: document.project.textureAnimation});
           const exported = entries.length === 1
-            ? exportModel(entries[0].model, Number(result.model_id), document.project.cemVersion, {modelScale: entries[0].branch.modelScale})
-            : exportModels(entries, Number(result.model_id), document.project.cemVersion);
+            ? exportModel(entries[0].model, Number(result.model_id), document.project.cemVersion, {modelScale: entries[0].branch.modelScale, textureSource: document.project.textureSource, textureAnimation: document.project.textureAnimation})
+            : exportModels(entries, Number(result.model_id), document.project.cemVersion, {textureSource: document.project.textureSource, textureAnimation: document.project.textureAnimation});
           Blockbench.export({resource_id: 'cem_s_studio_glsl', type: `CEM-S ${document.project.cemVersion} model`, extensions: ['glsl'], name: document.project.name, content: exported.glsl}, path => Blockbench.showQuickMessage(`CEM-S Studio: exported ${path || document.project.name}.`));
         } catch (error) {
           Blockbench.showMessageBox({title: 'CEM-S Studio export failed', message: error.message});
@@ -1003,7 +1020,9 @@
     const referencedTextures = collectReferencedTextures(elements, Texture.all || [], {isReference: element => isReferenceCube(element, document.project.reference)});
     let textureAtlas = null;
     let textureFile = null;
-    if (referencedTextures.length) {
+    let textureSettings = null;
+    const textureSource = document.project.textureSource || 'static_atlas';
+    if (textureSource === 'static_atlas' && referencedTextures.length) {
       const profile = profileFor(document.project.targetEntity, document.project.cemVersion);
       const configuredPaths = document.project.texturePaths?.length ? document.project.texturePaths : (document.project.texturePath ? [document.project.texturePath] : []);
       const texturePaths = configuredPaths.length ? configuredPaths : (profile.texturePath ? [profile.texturePath] : []);
@@ -1013,12 +1032,21 @@
       if (!primaryTexture) throw new Error(`${profile.name} needs one referenced ${expected[0]}x${expected[1]} base entity texture before its additional Blockbench textures can be packed.`);
       textureAtlas = renderTextureAtlas(referencedTextures, {primaryTexture, marker: {pixel: document.project.detection.pixel, color: document.project.detection.color}});
       textureFile = {path: texturePaths[0], paths: texturePaths, content: textureAtlas.png, baseSize: expected.slice()};
+    } else if (textureSource === 'animated_sampler0') {
+      const configuredPaths = document.project.texturePaths?.length ? document.project.texturePaths : (document.project.texturePath ? [document.project.texturePath] : []);
+      if (!configuredPaths.length) throw new Error('animated_sampler0 requires Target texture path so Minecraft can provide the animated Sampler0 texture.');
+      if (!document.project.textureAnimation || document.project.textureAnimation.frameCount < 2) throw new Error('animated_sampler0 requires at least two animation frames.');
+      const profile = profileFor(document.project.targetEntity, document.project.cemVersion);
+      textureSettings = {path: configuredPaths[0], paths: configuredPaths, baseSize: (profile.textureSize || []).slice(), animation: document.project.textureAnimation};
+    } else if (textureSource === 'host_sampler0') {
+      const profile = profileFor(document.project.targetEntity, document.project.cemVersion);
+      textureSettings = {path: null, paths: [], baseSize: (profile.textureSize || []).slice(), animation: null};
     }
-    const entries = toCemModels(document.project.name, elements, {reference: document.project.reference, branches: document.project.detection.branches, textureAtlas});
+    const entries = toCemModels(document.project.name, elements, {reference: document.project.reference, branches: document.project.detection.branches, textureAtlas, textureSource, textureAnimation: document.project.textureAnimation});
     const exported = entries.length === 1
-      ? exportModel(entries[0].model, document.project.modelId, document.project.cemVersion, {modelScale: entries[0].branch.modelScale})
-      : exportModels(entries, document.project.modelId, document.project.cemVersion);
-    return {glsl: exported.glsl, textureFile};
+      ? exportModel(entries[0].model, document.project.modelId, document.project.cemVersion, {modelScale: entries[0].branch.modelScale, textureSource, textureAnimation: document.project.textureAnimation})
+      : exportModels(entries, document.project.modelId, document.project.cemVersion, {textureSource, textureAnimation: document.project.textureAnimation});
+    return {glsl: exported.glsl, textureFile, textureSettings};
   }
 
   async function buildResourcePack(mode) {
@@ -1036,6 +1064,7 @@
       const workspace = document.workspace;
       const modelGlslById = {};
       const textureFiles = {};
+      const textureSettings = {};
       const originalActive = workspace?.activeModel;
       const models = workspace?.models?.length ? workspace.models : [{id: '__current', project: document.project, blockbench: document.blockbench}];
       try {
@@ -1049,13 +1078,14 @@
           const exported = exportCurrentPackModel(current);
           modelGlslById[model.id] = exported.glsl;
           if (exported.textureFile) textureFiles[model.id] = exported.textureFile;
+          if (exported.textureSettings) textureSettings[model.id] = exported.textureSettings;
         }
       } finally {
         if (workspace && originalActive && workspace.models.find(model => model.id === originalActive)) switchWorkspaceModel(originalActive);
       }
       const generated = workspace?.models?.length
-        ? buildWorkspacePackFiles(document, modelGlslById, {runtimeFiles, textureFiles})
-        : buildPackFiles(document, modelGlslById['__current'], {runtimeFiles, textureFile: textureFiles['__current']});
+        ? buildWorkspacePackFiles(document, modelGlslById, {runtimeFiles, textureFiles, textureSettings})
+        : buildPackFiles(document, modelGlslById['__current'], {runtimeFiles, textureFile: textureFiles['__current'], textureSettings: textureSettings['__current']});
       const aggregatorFiles = ['assets/minecraft/shaders/include/cem_user/models.glsl', 'assets/minecraft/shaders/include/cem_user/detection.glsl', 'pack.mcmeta'];
       const files = mode === 'new' ? generated : mergePackFiles(readExistingFiles(root, aggregatorFiles, fs), generated, document);
       writeFiles(root, files, fs);

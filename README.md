@@ -29,7 +29,7 @@ The generated folder can be copied directly into Minecraft's `resourcepacks` dir
 - Import arbitrary vanilla/community `.bbmodel` files as reference skeletons; no per-mob hardcoded model list is required.
 - Reference guides stay visible in the editor but are excluded from Blockbench Create Texture templates and model export.
 - Multiple user textures are collected into a PNG atlas during resource-pack build. Cube and square UVs are remapped, reference-guide textures are excluded, and the generated detection shader compensates the original entity UV size when the atlas is larger than the vanilla texture.
-- Atlas export currently requires a referenced base texture with the selected profile's vanilla dimensions and a verified static `Sampler0` texture path. Player skins and custom dynamic texture sources remain an explicit runtime/resource-pack limitation.
+- Texture source can be `static_atlas`, `host_sampler0`, or `animated_sampler0`. Host mode samples the current entity/player texture without baking a copy; animated mode samples a vertical frame strip from `Sampler0` using `GameTime`. Cross-render-layer independent samplers still require a CEM-S/Fabric runtime extension.
 - Choose an Entity/Mob or Armor/Equipment render target for body attachments, armor, elytra, and similar equipment layers.
 - Arbitrary animated models and non-rectangular mesh faces are not exported. Cube rotation, parent transforms, square meshes, locators, disabled faces, and per-face UV rotation are supported; unsupported geometry is rejected with diagnostics.
 

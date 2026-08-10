@@ -32,6 +32,20 @@ node scripts/build-minecraft-verification-pack.js 1.21.11 .\verification-output\
 4. 方块是否位于猪头部，且 Y 轴向上、旋转方向正确。
 5. 删除 marker 后模型是否不再被检测，以确认检测规则确实生效。
 
+## 动态纹理验证
+
+动态模式使用当前渲染层的 `Sampler0`，不需要把玩家皮肤或动画 PNG 重新打包进 atlas。
+
+### 玩家宿主纹理
+
+在 Blockbench 中选择 `Texture source = Host dynamic texture / Sampler0`。玩家目标项目会自动使用 `Direct UV / vertex detection`，因为真实玩家皮肤不应被写入 CEM marker。准备两个不同外观的玩家皮肤，进入同一世界后确认 CEM 部件的 UV 颜色随皮肤切换而变化。
+
+### 动画 Sampler0
+
+在资源包中准备一个竖向帧图，填写固定 `Target texture path`、`Animation frame count` 和 `Ticks per frame`，选择 `Animated Sampler0 frame strip`。确认模型颜色按帧变化，并检查 `latest.log` 没有 shader 编译错误。插件只生成采样元数据，不会覆盖用户提供的动画 PNG。
+
+跨渲染层读取玩家皮肤（例如鞘翅宿主上的挂件使用玩家皮肤）需要额外的 CEM-S/Fabric 纹理绑定，当前不能仅由原版资源包验证通过。
+
 ## 状态
 
 | Minecraft 版本 | 客户端 | 资源包加载 | Shader 编译 | 坐标/模型 | UV 90/270 | 证据 |

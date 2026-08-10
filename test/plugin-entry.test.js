@@ -33,7 +33,9 @@ test('registers the CEM-S Studio project format and resource-pack workflow', () 
   assert.match(source, /data-cem-state="entity"/);
   assert.match(source, /data-cem-state="textures"/);
   assert.match(source, /studioTextureState/);
-  assert.match(source, /缺少基础纹理/);
+  assert.match(source, /static_atlas/);
+  assert.match(source, /host_sampler0/);
+  assert.match(source, /animated_sampler0/);
   assert.match(source, /data-cem-action="reference"/);
   assert.match(source, /data-cem-action="render"/);
   assert.match(source, /data-cem-action="reset-anchor"/);

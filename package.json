@@ -1,6 +1,6 @@
 {
   "name": "cem-s-studio",
-  "version": "0.7.0",
+  "version": "0.8.0-beta",
   "private": true,
   "description": "Blockbench project format and resource-pack builder for CEM-S on Minecraft 1.21.6, 1.21.11, and 26.1+",
   "scripts": {

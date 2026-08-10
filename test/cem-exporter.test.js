@@ -18,6 +18,14 @@ test('records the selected Minecraft runtime in the export manifest', () => {
   assert.throws(() => exportModel(model, 1, '1.22'), /unsupported Minecraft runtime/);
 });
 
+test('emits runtime texture source setup for animated Sampler0 models', () => {
+  const model = {name: 'animated', textureSource: 'animated_sampler0', textureAnimation: {frameCount: 4, frameDurationTicks: 2}, parts: [{type: 'cube', origin: [0, 0, 0], size: [1, 1, 1]}]};
+  const glsl = exportModel(model, 3).glsl;
+  assert.match(glsl, /cem_texture_source = 1/);
+  assert.match(glsl, /cem_texture_frame_count = 4/);
+  assert.match(glsl, /cem_texture_frame_ticks = 2/);
+});
+
 test('uses supplied Blockbench face UV rectangles', () => {
   const result = exportModel({name: 'demo', parts: [{name: 'body', type: 'cube', origin: [0, 0, 0], size: [1, 1, 1], faces: [[1, 2, 3, 4], [5, 6, 7, 8]]}]});
   assert.match(result.glsl, /vec4\(1\.0, 2\.0, 3\.0, 4\.0\), vec4\(5\.0, 6\.0, 7\.0, 8\.0\)/);

@@ -1,6 +1,9 @@
 #define VERT_A 100000
 
 vec2 texSize = textureSize(Sampler0, 0);
+cem_texture_source = 0;
+cem_texture_frame_count = 1;
+cem_texture_frame_ticks = 1;
 vec3 Pos1 = round(cem_pos1.xyz * VERT_A / cem_pos1.w) / VERT_A;
 vec3 Pos2 = round(cem_pos3.xyz * VERT_A / cem_pos3.w) / VERT_A;
 float vertex2Gradient = abs(dFdx(cem_pos2.w)) + abs(dFdy(cem_pos2.w));
@@ -75,7 +78,7 @@ if (cem_keep_original == 1)
         vec2 originalThirdUv = hitFirst ? UV3 : UV4;
         vec2 originalUv = UV1 + originalHit.x * (UV2 - UV1) + originalHit.y * (originalThirdUv - UV1);
         ivec2 originalPixel = clamp(ivec2(floor(originalUv)), ivec2(0), textureSize(Sampler0, 0) - 1);
-        vec4 originalColor = texelFetch(Sampler0, originalPixel, 0) * CEM_VERTEX_COLOR * ColorModulator;
+        vec4 originalColor = cemTexelFetch(originalUv) * CEM_VERTEX_COLOR * ColorModulator;
         if (originalColor.a >= 0.1)
         {
             minT = originalHit.z;
